@@ -1,12 +1,13 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CreditCard, Building2 } from 'lucide-react';
+import { AlertTriangle, CreditCard, Building2, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SubscriptionGateProps {
   children: ReactNode;
@@ -15,14 +16,45 @@ interface SubscriptionGateProps {
 }
 
 export function SubscriptionGate({ children, allowViewOnly = false }: SubscriptionGateProps) {
-  const { hasActiveSubscription, subscription, organization, role } = useAuth();
+  const { hasActiveSubscription, subscription, organization, role, session } = useAuth();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleMockPayment = () => {
-    toast({
-      title: 'Mock płatności',
-      description: 'System płatności zostanie zintegrowany w przyszłości. Na razie nowe firmy mają 14 dni okresu próbnego.',
-    });
+  const handleSubscribe = async () => {
+    if (!session) {
+      toast({
+        title: 'Błąd',
+        description: 'Musisz być zalogowany, aby subskrybować.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      } else {
+        throw new Error('Nie otrzymano URL do płatności');
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      toast({
+        title: 'Błąd płatności',
+        description: error instanceof Error ? error.message : 'Nie udało się utworzyć sesji płatności',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // If organization subscription is active, allow full access
@@ -83,9 +115,13 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
           
           {role === 'management' ? (
             <>
-              <Button onClick={handleMockPayment} className="w-full">
-                <CreditCard className="mr-2 h-4 w-4" />
-                Odnów subskrypcję
+              <Button onClick={handleSubscribe} className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CreditCard className="mr-2 h-4 w-4" />
+                )}
+                {isLoading ? 'Przekierowanie...' : 'Odnów subskrypcję'}
               </Button>
               <p className="text-sm text-muted-foreground">
                 Cena: 29,99 PLN / miesiąc za firmę
