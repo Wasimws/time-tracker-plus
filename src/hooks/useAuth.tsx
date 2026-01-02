@@ -18,6 +18,7 @@ interface SubscriptionInfo {
   status: SubscriptionStatus;
   trialEndsAt: Date | null;
   isActive: boolean;
+  hasStripeSubscription: boolean;
 }
 
 interface AuthContextType {
@@ -28,6 +29,7 @@ interface AuthContextType {
   organization: Organization | null;
   subscription: SubscriptionInfo | null;
   hasActiveSubscription: boolean;
+  hasStripeSubscription: boolean;
   themePreference: ThemePreference;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -104,12 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (subData) {
             // Subscription active if status is 'active' OR organization trial is still running
-            const isActive = subData.status === 'active' || isTrialActive;
+            const hasStripe = subData.status === 'active';
+            const isActive = hasStripe || isTrialActive;
             
             setSubscription({
-              status: isTrialActive && subData.status !== 'active' ? 'trial' : subData.status as SubscriptionStatus,
+              status: isTrialActive && !hasStripe ? 'trial' : subData.status as SubscriptionStatus,
               trialEndsAt: trialEndAt,
               isActive,
+              hasStripeSubscription: hasStripe,
             });
           } else {
             // No subscription record - check if trial is active
@@ -117,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               status: isTrialActive ? 'trial' : 'inactive',
               trialEndsAt: trialEndAt,
               isActive: isTrialActive,
+              hasStripeSubscription: false,
             });
           }
         } else {
@@ -234,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Compute hasActiveSubscription from subscription state
   const hasActiveSubscription = subscription?.isActive ?? false;
+  const hasStripeSubscription = subscription?.hasStripeSubscription ?? false;
 
   return (
     <AuthContext.Provider value={{
@@ -244,6 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization,
       subscription,
       hasActiveSubscription,
+      hasStripeSubscription,
       themePreference,
       signIn,
       signOut,
