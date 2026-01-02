@@ -216,7 +216,7 @@ export function SubscriptionManagement() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Plan TimeTracker Pro</CardTitle>
+          <CardTitle>Plan Hourlyx Pro</CardTitle>
           <CardDescription>
             Pełny dostęp do systemu zarządzania czasem pracy
           </CardDescription>

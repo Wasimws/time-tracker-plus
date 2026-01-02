@@ -6,12 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, Users, Clock, Settings, Activity, CreditCard } from 'lucide-react';
+import { Download, Loader2, Users, Clock, Settings, Activity, CreditCard, Mail } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { UserManagement } from './UserManagement';
 import { ActivityLog } from './ActivityLog';
 import { SubscriptionManagement } from './SubscriptionManagement';
+import { InvitationManagement } from './InvitationManagement';
 
 interface EmployeeStats {
   userId: string;
@@ -124,7 +125,7 @@ export function ManagementDashboard() {
       <h1 className="text-2xl font-bold">Panel zarządu</h1>
 
       <Tabs defaultValue="stats" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-5 max-w-3xl">
           <TabsTrigger value="stats" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             <span className="hidden sm:inline">Statystyki</span>
@@ -132,6 +133,10 @@ export function ManagementDashboard() {
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Użytkownicy</span>
+          </TabsTrigger>
+          <TabsTrigger value="invitations" className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            <span className="hidden sm:inline">Zaproszenia</span>
           </TabsTrigger>
           <TabsTrigger value="activity" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
@@ -247,6 +252,10 @@ export function ManagementDashboard() {
 
         <TabsContent value="users" className="mt-6">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="invitations" className="mt-6">
+          <InvitationManagement />
         </TabsContent>
 
         <TabsContent value="activity" className="mt-6">

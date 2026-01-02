@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Clock, LogOut, User, Shield, Building2 } from 'lucide-react';
+import { APP_NAME } from '@/lib/constants';
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,7 +27,7 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Clock className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold text-primary">WorkTime</span>
+              <span className="text-xl font-bold text-primary">{APP_NAME}</span>
             </div>
             {organization && (
               <Badge variant="outline" className="hidden sm:flex items-center gap-1">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Loader2, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Clock, Loader2, Building2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { APP_NAME, APP_DESCRIPTION, TRIAL_DURATION_DAYS } from '@/lib/constants';
+import { validatePassword, getPasswordStrength } from '@/lib/password-validation';
 
 type SignupStep = 'credentials' | 'organization';
 
@@ -22,6 +24,20 @@ interface OrgCheckResult {
   };
 }
 
+interface InviteInfo {
+  valid: boolean;
+  invitation?: {
+    email: string;
+    role: string;
+    organization: {
+      id: string;
+      name: string;
+      code: string;
+    };
+  };
+  error?: string;
+}
+
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +47,37 @@ export default function Auth() {
   const [orgName, setOrgName] = useState('');
   const [orgCheckResult, setOrgCheckResult] = useState<OrgCheckResult | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
   const { signIn, user, organization, refreshUserData } = useAuth();
+
+  // Check invitation token on load
+  useEffect(() => {
+    if (inviteToken) {
+      checkInvitation(inviteToken);
+    }
+  }, [inviteToken]);
+
+  const checkInvitation = async (token: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('register-with-org', {
+        body: { action: 'check_invite', inviteToken: token },
+      });
+
+      if (!error && data) {
+        setInviteInfo(data);
+        if (data.valid && data.invitation) {
+          setSignupData(prev => ({ ...prev, email: data.invitation.email }));
+        }
+      }
+    } catch (err) {
+      console.error('Error checking invitation:', err);
+    }
+  };
 
   // Redirect when user is logged in AND has organization
   useEffect(() => {
@@ -43,7 +88,7 @@ export default function Auth() {
 
   // Debounced organization check
   useEffect(() => {
-    if (orgCode.length < 3) {
+    if (inviteToken || orgCode.length < 3) {
       setOrgCheckResult(null);
       return;
     }
@@ -66,7 +111,7 @@ export default function Auth() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [orgCode]);
+  }, [orgCode, inviteToken]);
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -90,6 +135,12 @@ export default function Auth() {
     // Navigation will happen via useEffect when user state updates
   };
 
+  const handlePasswordChange = (password: string) => {
+    const result = validatePassword(password);
+    setPasswordErrors(result.errors);
+    return result.valid;
+  };
+
   const handleSignUpStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -99,13 +150,73 @@ export default function Auth() {
     const password = formData.get('password') as string;
     const fullName = formData.get('fullName') as string;
 
-    if (password.length < 6) {
-      setError('Hasło musi mieć co najmniej 6 znaków');
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      setError(validation.errors[0]);
       return;
     }
 
     setSignupData({ email, password, fullName });
-    setSignupStep('organization');
+    
+    // If we have a valid invitation, skip organization step
+    if (inviteInfo?.valid) {
+      handleInviteSignup(email, password, fullName);
+    } else {
+      setSignupStep('organization');
+    }
+  };
+
+  const handleInviteSignup = async (email: string, password: string, fullName: string) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // First, register the user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            full_name: fullName,
+          },
+        },
+      });
+
+      if (authError) {
+        if (authError.message.includes('already')) {
+          setError('Ten email jest już zarejestrowany. Spróbuj się zalogować.');
+        } else {
+          setError(authError.message);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      if (!authData.session) {
+        setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Now assign the user to organization using the invitation
+      const { data, error } = await supabase.functions.invoke('register-with-org', {
+        body: {
+          action: 'assign_org',
+          inviteToken,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      await refreshUserData();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUpStep2 = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -182,8 +293,6 @@ export default function Auth() {
 
   // Show loading while checking auth state
   if (user && !organization) {
-    // User is logged in but no organization - they need to complete registration
-    // This shouldn't normally happen, but handle it gracefully
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -195,18 +304,18 @@ export default function Auth() {
     return null;
   }
 
+  const passwordStrength = signupData.password ? getPasswordStrength(signupData.password) : null;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Clock className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-primary">WorkTime</span>
+            <span className="text-2xl font-bold text-primary">{APP_NAME}</span>
           </div>
-          <CardTitle>Witaj w WorkTime</CardTitle>
-          <CardDescription>
-            System śledzenia czasu pracy dla firm
-          </CardDescription>
+          <CardTitle>Witaj w {APP_NAME}</CardTitle>
+          <CardDescription>{APP_DESCRIPTION}</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (
@@ -214,8 +323,25 @@ export default function Auth() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {inviteInfo?.valid && inviteInfo.invitation && (
+            <Alert className="mb-4 bg-primary/10 border-primary/20">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <AlertDescription>
+                Zostałeś zaproszony do firmy <strong>{inviteInfo.invitation.organization.name}</strong> jako{' '}
+                <strong>{inviteInfo.invitation.role === 'management' ? 'Zarząd' : 'Pracownik'}</strong>.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {inviteInfo && !inviteInfo.valid && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{inviteInfo.error}</AlertDescription>
+            </Alert>
+          )}
           
-          <Tabs defaultValue="signin" className="w-full">
+          <Tabs defaultValue={inviteInfo?.valid ? 'signup' : 'signin'} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Logowanie</TabsTrigger>
               <TabsTrigger value="signup" onClick={() => {
@@ -239,13 +365,24 @@ export default function Auth() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signin-password">Hasło</Label>
-                  <Input
-                    id="signin-password"
-                    name="password"
-                    type="password"
-                    required
-                    disabled={isLoading}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="signin-password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      disabled={isLoading}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
@@ -283,23 +420,48 @@ export default function Auth() {
                       type="email"
                       placeholder="jan@firma.pl"
                       required
-                      disabled={isLoading}
+                      disabled={isLoading || (inviteInfo?.valid ?? false)}
                       defaultValue={signupData.email}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Hasło</Label>
-                    <Input
-                      id="signup-password"
-                      name="password"
-                      type="password"
-                      placeholder="Min. 6 znaków"
-                      required
-                      disabled={isLoading}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="signup-password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Min. 8 znaków, duże i małe litery, cyfra, znak specjalny"
+                        required
+                        disabled={isLoading}
+                        onChange={(e) => {
+                          setSignupData(prev => ({ ...prev, password: e.target.value }));
+                          handlePasswordChange(e.target.value);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    {passwordErrors.length > 0 && (
+                      <ul className="text-xs text-destructive space-y-1">
+                        {passwordErrors.map((err, i) => (
+                          <li key={i}>• {err}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {passwordStrength && passwordErrors.length === 0 && (
+                      <p className="text-xs text-primary">✓ Hasło spełnia wymagania</p>
+                    )}
                   </div>
-                  <Button type="submit" className="w-full">
-                    Dalej - Wybór firmy
+                  <Button type="submit" className="w-full" disabled={isLoading || passwordErrors.length > 0}>
+                    {inviteInfo?.valid ? 'Utwórz konto i dołącz' : 'Dalej - Wybór firmy'}
                   </Button>
                 </form>
               ) : (
@@ -356,7 +518,7 @@ export default function Auth() {
                               Utworzysz nową firmę
                             </p>
                             <p className="text-sm text-green-700 dark:text-green-300">
-                              Otrzymasz rolę Zarządu
+                              Otrzymasz rolę Zarządu + {TRIAL_DURATION_DAYS} dni triala
                             </p>
                           </div>
                         </div>
@@ -408,7 +570,7 @@ export default function Auth() {
           </Tabs>
         </CardContent>
         <CardFooter className="text-center text-sm text-muted-foreground flex-col gap-2">
-          <p>14 dni bezpłatnego okresu próbnego</p>
+          <p>{TRIAL_DURATION_DAYS} dni bezpłatnego okresu próbnego</p>
           <Badge variant="secondary">Multi-tenant SaaS</Badge>
         </CardFooter>
       </Card>
