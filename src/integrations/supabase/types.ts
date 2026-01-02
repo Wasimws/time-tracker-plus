@@ -52,12 +52,61 @@ export type Database = {
           },
         ]
       }
+      invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          organization_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           code: string
           created_at: string
           id: string
           name: string
+          trial_end_at: string | null
+          trial_start_at: string | null
           updated_at: string
         }
         Insert: {
@@ -65,6 +114,8 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          trial_end_at?: string | null
+          trial_start_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -72,6 +123,8 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          trial_end_at?: string | null
+          trial_start_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -267,6 +320,7 @@ export type Database = {
       }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_active_subscription: { Args: { _user_id: string }; Returns: boolean }
+      has_org_access: { Args: { _org_id: string }; Returns: boolean }
       has_org_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -281,6 +335,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_org_trial_active: { Args: { _org_id: string }; Returns: boolean }
       is_owner_email: { Args: { _email: string }; Returns: boolean }
       log_activity: {
         Args: { _action_type: string; _description: string; _metadata?: Json }
