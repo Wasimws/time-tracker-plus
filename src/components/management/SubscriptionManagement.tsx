@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
 export function SubscriptionManagement() {
-  const { organization, subscription, session, hasActiveSubscription, refreshUserData } = useAuth();
+  const { organization, subscription, session, hasActiveSubscription, hasStripeSubscription, refreshUserData } = useAuth();
   const { toast } = useToast();
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
@@ -183,7 +183,7 @@ export function SubscriptionManagement() {
 
           <div className="border-t pt-6">
             <div className="flex flex-wrap gap-3">
-              {hasActiveSubscription ? (
+              {hasStripeSubscription ? (
                 <Button onClick={handleManageSubscription} disabled={isPortalLoading}>
                   {isPortalLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
