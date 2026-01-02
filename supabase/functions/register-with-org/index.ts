@@ -29,7 +29,7 @@ serve(async (req) => {
       );
     }
 
-    // Action: check if organization exists
+    // Action: check if organization exists (public endpoint)
     if (action === 'check_org') {
       const { data: org } = await supabase
         .from('organizations')
@@ -61,6 +61,8 @@ serve(async (req) => {
       const email = user.email!;
       const fullName = user.user_metadata?.full_name || '';
 
+      console.log(`Processing assign_org for user ${email} (${userId})`);
+
       // Check if user already has an organization
       const { data: existingProfile } = await supabase
         .from('profiles')
@@ -69,7 +71,9 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingProfile?.organization_id) {
-        // User already assigned to an organization, return success
+        // User already assigned to an organization - return their current data
+        console.log(`User ${email} already has organization ${existingProfile.organization_id}`);
+        
         const { data: userRole } = await supabase
           .from('user_roles')
           .select('role')
@@ -77,11 +81,18 @@ serve(async (req) => {
           .eq('organization_id', existingProfile.organization_id)
           .maybeSingle();
 
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('id, name, code')
+          .eq('id', existingProfile.organization_id)
+          .maybeSingle();
+
         return new Response(
           JSON.stringify({ 
             success: true, 
             userId,
             organizationId: existingProfile.organization_id,
+            organization: org,
             isNewOrg: false,
             role: userRole?.role || 'employee',
             message: 'Użytkownik już przypisany do firmy'
@@ -97,13 +108,14 @@ serve(async (req) => {
 
       const { data: existingOrg } = await supabase
         .from('organizations')
-        .select('id')
+        .select('id, name, code')
         .eq('code', organizationCode.toLowerCase())
         .maybeSingle();
 
       if (existingOrg) {
         orgId = existingOrg.id;
         assignedRole = 'employee';
+        console.log(`User ${email} joining existing organization: ${existingOrg.name}`);
       } else {
         // Create new organization
         const { data: newOrg, error: orgError } = await supabase
@@ -126,28 +138,33 @@ serve(async (req) => {
         orgId = newOrg.id;
         isNewOrg = true;
         assignedRole = 'management';
+        console.log(`User ${email} created new organization: ${newOrg.name}`);
       }
 
-      // Check if this is the owner email
+      // Check if this is the owner email - always gets management role
       if (ownerEmail && email.toLowerCase() === ownerEmail.toLowerCase()) {
         assignedRole = 'management';
+        console.log(`User ${email} is owner email - assigning management role`);
       }
 
-      // Update or create profile with organization
+      // Update profile with organization
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({
-          id: userId,
-          email: email,
-          full_name: fullName,
+        .update({
           organization_id: orgId,
-        }, { onConflict: 'id' });
+          full_name: fullName || undefined,
+        })
+        .eq('id', userId);
 
       if (profileError) {
         console.error('Error updating profile:', profileError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Nie udało się zaktualizować profilu' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      // Check if role already exists
+      // Update user role with organization
       const { data: existingRole } = await supabase
         .from('user_roles')
         .select('id, role')
@@ -156,13 +173,16 @@ serve(async (req) => {
 
       if (existingRole) {
         // Update existing role with organization
+        const newRole = isNewOrg ? 'management' : existingRole.role;
         await supabase
           .from('user_roles')
           .update({ 
             organization_id: orgId,
-            role: isNewOrg ? 'management' : existingRole.role 
+            role: assignedRole === 'management' ? 'management' : newRole 
           })
           .eq('id', existingRole.id);
+        
+        assignedRole = assignedRole === 'management' ? 'management' : (newRole as 'employee' | 'management');
       } else {
         // Create new role
         await supabase
@@ -174,7 +194,7 @@ serve(async (req) => {
           });
       }
 
-      // Create subscription for new organization
+      // Create subscription for new organization (org-level)
       if (isNewOrg) {
         const { data: existingSub } = await supabase
           .from('subscriptions')
@@ -183,13 +203,19 @@ serve(async (req) => {
           .maybeSingle();
 
         if (!existingSub) {
-          await supabase
+          const { error: subError } = await supabase
             .from('subscriptions')
             .insert({
-              user_id: userId,
+              user_id: userId, // Creator of org, for reference only
               organization_id: orgId,
               status: 'trial',
             });
+
+          if (subError) {
+            console.error('Error creating subscription:', subError);
+          } else {
+            console.log(`Created trial subscription for organization ${orgId}`);
+          }
         }
       }
 
@@ -203,6 +229,8 @@ serve(async (req) => {
           description: `Użytkownik ${fullName || email} ${isNewOrg ? 'utworzył firmę' : 'dołączył do firmy'}`,
           metadata: { isNewOrg, role: assignedRole },
         });
+
+      console.log(`Successfully assigned user ${email} to org ${orgId} with role ${assignedRole}`);
 
       return new Response(
         JSON.stringify({ 

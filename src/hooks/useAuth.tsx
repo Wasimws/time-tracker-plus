@@ -45,12 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
 
-  const logActivityInternal = useCallback(async (userId: string, actionType: string, description: string, metadata?: Record<string, unknown>) => {
+  const logActivityInternal = useCallback(async (_userId: string, actionType: string, description: string, metadata?: Record<string, unknown>) => {
     try {
       await supabase.rpc('log_activity', {
         _action_type: actionType,
         _description: description,
-        _metadata: metadata || {},
+        _metadata: JSON.parse(JSON.stringify(metadata || {})),
       });
     } catch (error) {
       console.error('Error logging activity:', error);
