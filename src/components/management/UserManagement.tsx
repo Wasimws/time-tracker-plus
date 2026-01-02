@@ -109,13 +109,25 @@ export function UserManagement() {
         title: 'Sukces',
         description: `Rola użytkownika została zmieniona na ${newRole === 'management' ? 'Zarząd' : 'Pracownik'}`,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error updating role:', error);
+      
+      // Check for last management user error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isLastManagementError = errorMessage.includes('last management user') || 
+        (error && typeof error === 'object' && 'message' in error && 
+         String((error as { message: string }).message).includes('last management user'));
+      
       toast({
         title: 'Błąd',
-        description: 'Nie udało się zmienić roli użytkownika',
+        description: isLastManagementError 
+          ? 'Nie można usunąć ostatniego administratora. System musi mieć co najmniej jednego użytkownika z rolą Zarząd.'
+          : 'Nie udało się zmienić roli użytkownika',
         variant: 'destructive',
       });
+      
+      // Refresh to get current state
+      fetchUsers();
     } finally {
       setUpdatingUserId(null);
     }

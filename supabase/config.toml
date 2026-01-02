@@ -1,1 +1,4 @@
 project_id = "almgfpaiknbgwkzgdrhs"
+
+[functions.init-owner]
+verify_jwt = false
