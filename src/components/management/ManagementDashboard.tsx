@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, Users, Clock, Settings } from 'lucide-react';
+import { Download, Loader2, Users, Clock, Settings, Activity } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { UserManagement } from './UserManagement';
+import { ActivityLog } from './ActivityLog';
 
 interface EmployeeStats {
   userId: string;
@@ -122,7 +123,7 @@ export function ManagementDashboard() {
       <h1 className="text-2xl font-bold">Panel zarządu</h1>
 
       <Tabs defaultValue="stats" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="stats" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Statystyki
@@ -130,6 +131,10 @@ export function ManagementDashboard() {
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             Użytkownicy
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Dziennik
           </TabsTrigger>
         </TabsList>
 
@@ -237,6 +242,10 @@ export function ManagementDashboard() {
 
         <TabsContent value="users" className="mt-6">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-6">
+          <ActivityLog />
         </TabsContent>
       </Tabs>
     </div>

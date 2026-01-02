@@ -2,3 +2,6 @@ project_id = "almgfpaiknbgwkzgdrhs"
 
 [functions.init-owner]
 verify_jwt = false
+
+[functions.register-with-org]
+verify_jwt = false

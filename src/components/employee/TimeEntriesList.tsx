@@ -23,7 +23,7 @@ interface TimeEntriesListProps {
 }
 
 export function TimeEntriesList({ refreshTrigger, onEdit }: TimeEntriesListProps) {
-  const { user } = useAuth();
+  const { user, logActivity } = useAuth();
   const { toast } = useToast();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,7 +78,7 @@ export function TimeEntriesList({ refreshTrigger, onEdit }: TimeEntriesListProps
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, workDate: string, hours: number) => {
     if (!confirm('Czy na pewno chcesz usunąć ten wpis?')) return;
 
     try {
@@ -88,6 +88,8 @@ export function TimeEntriesList({ refreshTrigger, onEdit }: TimeEntriesListProps
         .eq('id', id);
 
       if (error) throw error;
+
+      await logActivity('time_entry_deleted', `Usunięto wpis: ${workDate}, ${hours}h`, { entryId: id, date: workDate, hours });
 
       toast({
         title: 'Sukces',
@@ -193,7 +195,7 @@ export function TimeEntriesList({ refreshTrigger, onEdit }: TimeEntriesListProps
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(entry.id)}
+                            onClick={() => handleDelete(entry.id, entry.work_date, entry.hours)}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>

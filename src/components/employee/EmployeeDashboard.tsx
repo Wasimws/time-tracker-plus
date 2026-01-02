@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { TimeEntryForm } from './TimeEntryForm';
 import { TimeEntriesList } from './TimeEntriesList';
 import { EarningsCalculator } from './EarningsCalculator';
@@ -11,6 +12,7 @@ interface TimeEntry {
 }
 
 export function EmployeeDashboard() {
+  const { organization } = useAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
 
@@ -28,6 +30,7 @@ export function EmployeeDashboard() {
             onEntryAdded={handleEntryAdded}
             editEntry={editingEntry}
             onCancelEdit={() => setEditingEntry(null)}
+            organizationId={organization?.id}
           />
           <EarningsCalculator />
         </div>

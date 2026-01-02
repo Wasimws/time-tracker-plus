@@ -18,10 +18,11 @@ interface TimeEntryFormProps {
     note: string | null;
   } | null;
   onCancelEdit?: () => void;
+  organizationId?: string;
 }
 
-export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit }: TimeEntryFormProps) {
-  const { user } = useAuth();
+export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizationId }: TimeEntryFormProps) {
+  const { user, logActivity } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [date, setDate] = useState(editEntry?.work_date || new Date().toISOString().split('T')[0]);
@@ -57,21 +58,28 @@ export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit }: TimeEnt
 
         if (error) throw error;
 
+        await logActivity('time_entry_updated', `Zaktualizowano wpis: ${date}, ${hoursNum}h`, { entryId: editEntry.id, date, hours: hoursNum });
+
         toast({
           title: 'Sukces',
           description: 'Wpis został zaktualizowany',
         });
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('time_entries')
           .insert({
             user_id: user.id,
             work_date: date,
             hours: hoursNum,
             note: note || null,
-          });
+            organization_id: organizationId,
+          })
+          .select()
+          .single();
 
         if (error) throw error;
+
+        await logActivity('time_entry_created', `Dodano wpis: ${date}, ${hoursNum}h`, { entryId: data.id, date, hours: hoursNum });
 
         toast({
           title: 'Sukces',
