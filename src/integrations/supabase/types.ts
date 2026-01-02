@@ -74,6 +74,27 @@ export type Database = {
         }
         Relationships: []
       }
+      system_config: {
+        Row: {
+          created_at: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       time_entries: {
         Row: {
           created_at: string
@@ -130,6 +151,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      count_management_users: { Args: never; Returns: number }
       has_active_subscription: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
@@ -138,6 +160,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_owner_email: { Args: { _email: string }; Returns: boolean }
     }
     Enums: {
       app_role: "employee" | "management"
