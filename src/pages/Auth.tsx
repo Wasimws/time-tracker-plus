@@ -32,13 +32,14 @@ export default function Auth() {
   const [orgCheckResult, setOrgCheckResult] = useState<OrgCheckResult | null>(null);
   const [isCheckingOrg, setIsCheckingOrg] = useState(false);
   const navigate = useNavigate();
-  const { signIn, user } = useAuth();
+  const { signIn, user, organization, refreshUserData } = useAuth();
 
+  // Redirect when user is logged in AND has organization
   useEffect(() => {
-    if (user) {
+    if (user && organization) {
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user, organization, navigate]);
 
   // Debounced organization check
   useEffect(() => {
@@ -79,11 +80,14 @@ export default function Auth() {
     const { error } = await signIn(email, password);
     
     if (error) {
-      setError(error.message);
+      if (error.message.includes('Invalid login credentials')) {
+        setError('Nieprawidłowy email lub hasło');
+      } else {
+        setError(error.message);
+      }
       setIsLoading(false);
-    } else {
-      navigate('/');
     }
+    // Navigation will happen via useEffect when user state updates
   };
 
   const handleSignUpStep1 = (e: React.FormEvent<HTMLFormElement>) => {
@@ -156,7 +160,10 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      navigate('/');
+      // Refresh user data to get organization info
+      await refreshUserData();
+
+      // Navigation will happen via useEffect
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
@@ -173,7 +180,20 @@ export default function Auth() {
     setError(null);
   };
 
-  if (user) return null;
+  // Show loading while checking auth state
+  if (user && !organization) {
+    // User is logged in but no organization - they need to complete registration
+    // This shouldn't normally happen, but handle it gracefully
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (user && organization) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

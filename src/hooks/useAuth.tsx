@@ -1,14 +1,21 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'employee' | 'management';
 type ThemePreference = 'light' | 'dark' | 'system';
+type SubscriptionStatus = 'active' | 'inactive' | 'trial';
 
 interface Organization {
   id: string;
   name: string;
   code: string;
+}
+
+interface SubscriptionInfo {
+  status: SubscriptionStatus;
+  trialEndsAt: Date | null;
+  isActive: boolean;
 }
 
 interface AuthContextType {
@@ -17,12 +24,14 @@ interface AuthContextType {
   loading: boolean;
   role: AppRole | null;
   organization: Organization | null;
+  subscription: SubscriptionInfo | null;
   hasActiveSubscription: boolean;
   themePreference: ThemePreference;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   setThemePreference: (theme: ThemePreference) => Promise<void>;
   logActivity: (actionType: string, description: string, metadata?: Record<string, unknown>) => Promise<void>;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,58 +42,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<AppRole | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          setTimeout(() => {
-            fetchUserData(session.user.id);
-            if (event === 'SIGNED_IN') {
-              logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
-            }
-          }, 0);
-        } else {
-          setRole(null);
-          setOrganization(null);
-          setHasActiveSubscription(false);
-          setLoading(false);
-        }
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const logActivityInternal = async (userId: string, actionType: string, description: string, metadata?: Record<string, unknown>) => {
+  const logActivityInternal = useCallback(async (userId: string, actionType: string, description: string, metadata?: Record<string, unknown>) => {
     try {
       await supabase.rpc('log_activity', {
         _action_type: actionType,
         _description: description,
-        _metadata: JSON.parse(JSON.stringify(metadata || {})),
+        _metadata: metadata || {},
       });
     } catch (error) {
       console.error('Error logging activity:', error);
     }
-  };
+  }, []);
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = useCallback(async (userId: string) => {
     try {
       // Fetch profile with organization
       const { data: profile } = await supabase
@@ -108,21 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (org) {
           setOrganization(org);
         }
-      }
 
-      // Fetch user role
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (roleData) {
-        setRole(roleData.role as AppRole);
-      }
-
-      // Fetch subscription status (org-based)
-      if (profile?.organization_id) {
+        // Fetch subscription status - ORGANIZATION LEVEL
         const { data: subData } = await supabase
           .from('subscriptions')
           .select('status, trial_ends_at')
@@ -130,17 +90,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle();
 
         if (subData) {
+          const trialEndsAt = subData.trial_ends_at ? new Date(subData.trial_ends_at) : null;
           const isActive = subData.status === 'active' || 
-            (subData.status === 'trial' && new Date(subData.trial_ends_at) > new Date());
-          setHasActiveSubscription(isActive);
+            (subData.status === 'trial' && trialEndsAt !== null && trialEndsAt > new Date());
+          
+          setSubscription({
+            status: subData.status as SubscriptionStatus,
+            trialEndsAt,
+            isActive,
+          });
+        } else {
+          // No subscription found for organization
+          setSubscription({
+            status: 'inactive',
+            trialEndsAt: null,
+            isActive: false,
+          });
         }
+      } else {
+        // User has no organization assigned yet
+        setOrganization(null);
+        setSubscription(null);
+      }
+
+      // Fetch user role (with organization context)
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role, organization_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (roleData) {
+        setRole(roleData.role as AppRole);
+      } else {
+        setRole(null);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const refreshUserData = useCallback(async () => {
+    if (user) {
+      setLoading(true);
+      await fetchUserData(user.id);
+    }
+  }, [user, fetchUserData]);
+
+  useEffect(() => {
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          setTimeout(() => {
+            fetchUserData(session.user.id);
+            if (event === 'SIGNED_IN') {
+              logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
+            }
+          }, 0);
+        } else {
+          setRole(null);
+          setOrganization(null);
+          setSubscription(null);
+          setLoading(false);
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchUserData(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => authSubscription.unsubscribe();
+  }, [fetchUserData, logActivityInternal]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -160,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setRole(null);
     setOrganization(null);
-    setHasActiveSubscription(false);
+    setSubscription(null);
   };
 
   const setThemePreference = async (theme: ThemePreference) => {
@@ -183,6 +216,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logActivityInternal(user.id, actionType, description, metadata);
   };
 
+  // Compute hasActiveSubscription from subscription state
+  const hasActiveSubscription = subscription?.isActive ?? false;
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -190,12 +226,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       role,
       organization,
+      subscription,
       hasActiveSubscription,
       themePreference,
       signIn,
       signOut,
       setThemePreference,
       logActivity,
+      refreshUserData,
     }}>
       {children}
     </AuthContext.Provider>
