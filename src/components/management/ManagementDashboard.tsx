@@ -6,11 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, Users, Clock, Settings, Activity } from 'lucide-react';
+import { Download, Loader2, Users, Clock, Settings, Activity, CreditCard } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { UserManagement } from './UserManagement';
 import { ActivityLog } from './ActivityLog';
+import { SubscriptionManagement } from './SubscriptionManagement';
 
 interface EmployeeStats {
   userId: string;
@@ -123,18 +124,22 @@ export function ManagementDashboard() {
       <h1 className="text-2xl font-bold">Panel zarządu</h1>
 
       <Tabs defaultValue="stats" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-lg">
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
           <TabsTrigger value="stats" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
-            Statystyki
+            <span className="hidden sm:inline">Statystyki</span>
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
-            Użytkownicy
+            <span className="hidden sm:inline">Użytkownicy</span>
           </TabsTrigger>
           <TabsTrigger value="activity" className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
-            Dziennik
+            <span className="hidden sm:inline">Dziennik</span>
+          </TabsTrigger>
+          <TabsTrigger value="subscription" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline">Subskrypcja</span>
           </TabsTrigger>
         </TabsList>
 
@@ -246,6 +251,10 @@ export function ManagementDashboard() {
 
         <TabsContent value="activity" className="mt-6">
           <ActivityLog />
+        </TabsContent>
+
+        <TabsContent value="subscription" className="mt-6">
+          <SubscriptionManagement />
         </TabsContent>
       </Tabs>
     </div>
