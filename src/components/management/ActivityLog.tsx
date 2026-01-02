@@ -15,10 +15,8 @@ interface ActivityLogEntry {
   description: string;
   metadata: Record<string, unknown>;
   created_at: string;
-  profiles?: {
-    full_name: string | null;
-    email: string;
-  } | null;
+  user_email?: string;
+  user_name?: string;
 }
 
 const actionTypeIcons: Record<string, typeof Activity> = {
@@ -55,26 +53,51 @@ export function ActivityLog() {
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch activity logs
+      const { data: activityData, error: activityError } = await supabase
         .from('activity_log')
-        .select(`
-          id,
-          user_id,
-          action_type,
-          description,
-          metadata,
-          created_at,
-          profiles:user_id (
-            full_name,
-            email
-          )
-        `)
+        .select('id, user_id, action_type, description, metadata, created_at')
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      if (activityError) throw activityError;
 
-      setLogs((data as unknown as ActivityLogEntry[]) || []);
+      if (!activityData || activityData.length === 0) {
+        setLogs([]);
+        return;
+      }
+
+      // Get unique user IDs
+      const userIds = [...new Set(activityData.map(log => log.user_id).filter(Boolean))] as string[];
+
+      // Fetch profiles for those users
+      let profilesMap = new Map<string, { full_name: string | null; email: string }>();
+      
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+
+        if (profilesData) {
+          profilesData.forEach(profile => {
+            profilesMap.set(profile.id, { full_name: profile.full_name, email: profile.email });
+          });
+        }
+      }
+
+      // Combine data
+      const enrichedLogs: ActivityLogEntry[] = activityData.map(log => {
+        const profile = log.user_id ? profilesMap.get(log.user_id) : null;
+        return {
+          ...log,
+          metadata: (log.metadata || {}) as Record<string, unknown>,
+          user_email: profile?.email,
+          user_name: profile?.full_name || undefined,
+        };
+      });
+
+      setLogs(enrichedLogs);
     } catch (error) {
       console.error('Error fetching activity logs:', error);
       toast({
@@ -125,7 +148,7 @@ export function ActivityLog() {
               <TableBody>
                 {logs.map(log => {
                   const IconComponent = actionTypeIcons[log.action_type] || Activity;
-                  const userName = log.profiles?.full_name || log.profiles?.email || 'System';
+                  const userName = log.user_name || log.user_email || 'System';
 
                   return (
                     <TableRow key={log.id}>
