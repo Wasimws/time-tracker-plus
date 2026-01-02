@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, Users, Clock } from 'lucide-react';
+import { Download, Loader2, Users, Clock, Settings } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { UserManagement } from './UserManagement';
 
 interface EmployeeStats {
   userId: string;
@@ -119,105 +121,124 @@ export function ManagementDashboard() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Panel zarządu</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-full">
-                <Users className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Wszyscy pracownicy</p>
-                <p className="text-2xl font-bold">{stats.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="stats" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="stats" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Statystyki
+          </TabsTrigger>
+          <TabsTrigger value="users" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Użytkownicy
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-full">
-                <Users className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Aktywni w miesiącu</p>
-                <p className="text-2xl font-bold">{employeesWithHours}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <TabsContent value="stats" className="space-y-6 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 rounded-full">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Wszyscy pracownicy</p>
+                    <p className="text-2xl font-bold">{stats.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-primary/10 rounded-full">
-                <Clock className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Suma godzin</p>
-                <p className="text-2xl font-bold">{totalAllHours.toFixed(1)}h</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 rounded-full">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Aktywni w miesiącu</p>
+                    <p className="text-2xl font-bold">{employeesWithHours}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-lg">Zestawienie pracowników</CardTitle>
-          <div className="flex gap-2">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(month => (
-                  <SelectItem key={month.value} value={month.value}>
-                    {month.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={exportToCSV} disabled={stats.length === 0}>
-              <Download className="h-4 w-4 mr-2" />
-              CSV
-            </Button>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 rounded-full">
+                    <Clock className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Suma godzin</p>
+                    <p className="text-2xl font-bold">{totalAllHours.toFixed(1)}h</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : stats.length === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">
-              Brak pracowników w systemie
-            </p>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Pracownik</TableHead>
-                    <TableHead className="hidden sm:table-cell">Email</TableHead>
-                    <TableHead className="text-right">Godziny</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stats.map(employee => (
-                    <TableRow key={employee.userId}>
-                      <TableCell className="font-medium">{employee.fullName}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{employee.email}</TableCell>
-                      <TableCell className="text-right">{employee.totalHours.toFixed(1)}h</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <CardTitle className="text-lg">Zestawienie pracowników</CardTitle>
+              <div className="flex gap-2">
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map(month => (
+                      <SelectItem key={month.value} value={month.value}>
+                        {month.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={exportToCSV} disabled={stats.length === 0}>
+                  <Download className="h-4 w-4 mr-2" />
+                  CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : stats.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">
+                  Brak pracowników w systemie
+                </p>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Pracownik</TableHead>
+                        <TableHead className="hidden sm:table-cell">Email</TableHead>
+                        <TableHead className="text-right">Godziny</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {stats.map(employee => (
+                        <TableRow key={employee.userId}>
+                          <TableCell className="font-medium">{employee.fullName}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{employee.email}</TableCell>
+                          <TableCell className="text-right">{employee.totalHours.toFixed(1)}h</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="mt-6">
+          <UserManagement />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
