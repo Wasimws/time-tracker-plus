@@ -6,6 +6,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Password validation
+const validatePassword = (password: string): { valid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  
+  if (password.length < 8) {
+    errors.push('Hasło musi mieć co najmniej 8 znaków');
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Hasło musi zawierać co najmniej jedną wielką literę');
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push('Hasło musi zawierać co najmniej jedną małą literę');
+  }
+  if (!/[0-9]/.test(password)) {
+    errors.push('Hasło musi zawierać co najmniej jedną cyfrę');
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    errors.push('Hasło musi zawierać co najmniej jeden znak specjalny');
+  }
+  
+  return { valid: errors.length === 0, errors };
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,7 +39,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const ownerEmail = Deno.env.get('OWNER_EMAIL');
 
-    const { organizationCode, organizationName, action } = await req.json();
+    const { organizationCode, organizationName, action, inviteToken, password } = await req.json();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -26,6 +49,64 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Brak autoryzacji' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Action: validate password
+    if (action === 'validate_password') {
+      const result = validatePassword(password || '');
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Action: check invitation token
+    if (action === 'check_invite') {
+      if (!inviteToken) {
+        return new Response(
+          JSON.stringify({ valid: false, error: 'Brak tokenu zaproszenia' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data: invitation } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, expires_at, organization_id, organizations(id, name, code)')
+        .eq('token', inviteToken)
+        .maybeSingle();
+
+      if (!invitation) {
+        return new Response(
+          JSON.stringify({ valid: false, error: 'Zaproszenie nie istnieje' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (invitation.status !== 'pending') {
+        return new Response(
+          JSON.stringify({ valid: false, error: 'Zaproszenie zostało już wykorzystane lub anulowane' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (new Date(invitation.expires_at) < new Date()) {
+        return new Response(
+          JSON.stringify({ valid: false, error: 'Zaproszenie wygasło' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          valid: true, 
+          invitation: {
+            email: invitation.email,
+            role: invitation.role,
+            organization: invitation.organizations
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -101,44 +182,99 @@ serve(async (req) => {
         );
       }
 
-      // Check if organization exists
+      // Check if this is from an invitation
       let orgId: string;
       let isNewOrg = false;
       let assignedRole: 'employee' | 'management' = 'employee';
 
-      const { data: existingOrg } = await supabase
-        .from('organizations')
-        .select('id, name, code')
-        .eq('code', organizationCode.toLowerCase())
-        .maybeSingle();
+      if (inviteToken) {
+        // Process invitation
+        const { data: invitation } = await supabase
+          .from('invitations')
+          .select('id, email, role, status, expires_at, organization_id')
+          .eq('token', inviteToken)
+          .maybeSingle();
 
-      if (existingOrg) {
-        orgId = existingOrg.id;
-        assignedRole = 'employee';
-        console.log(`User ${email} joining existing organization: ${existingOrg.name}`);
-      } else {
-        // Create new organization
-        const { data: newOrg, error: orgError } = await supabase
-          .from('organizations')
-          .insert({
-            name: organizationName || organizationCode,
-            code: organizationCode.toLowerCase(),
-          })
-          .select()
-          .single();
-
-        if (orgError) {
-          console.error('Error creating organization:', orgError);
+        if (!invitation) {
           return new Response(
-            JSON.stringify({ success: false, error: 'Nie udało się utworzyć firmy' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ success: false, error: 'Zaproszenie nie istnieje' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        orgId = newOrg.id;
-        isNewOrg = true;
-        assignedRole = 'management';
-        console.log(`User ${email} created new organization: ${newOrg.name}`);
+        if (invitation.status !== 'pending') {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Zaproszenie zostało już wykorzystane' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (new Date(invitation.expires_at) < new Date()) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Zaproszenie wygasło' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Email must match invitation email
+        if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Email nie pasuje do zaproszenia' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        orgId = invitation.organization_id;
+        assignedRole = invitation.role as 'employee' | 'management';
+
+        // Mark invitation as accepted
+        await supabase
+          .from('invitations')
+          .update({ status: 'accepted', accepted_at: new Date().toISOString() })
+          .eq('id', invitation.id);
+
+        console.log(`User ${email} accepted invitation to org ${orgId} with role ${assignedRole}`);
+      } else {
+        // Check if organization exists
+        const { data: existingOrg } = await supabase
+          .from('organizations')
+          .select('id, name, code')
+          .eq('code', organizationCode.toLowerCase())
+          .maybeSingle();
+
+        if (existingOrg) {
+          orgId = existingOrg.id;
+          assignedRole = 'employee';
+          console.log(`User ${email} joining existing organization: ${existingOrg.name}`);
+        } else {
+          // Create new organization with 3-day trial
+          const trialEndAt = new Date();
+          trialEndAt.setHours(trialEndAt.getHours() + 72); // 3 days = 72 hours
+
+          const { data: newOrg, error: orgError } = await supabase
+            .from('organizations')
+            .insert({
+              name: organizationName || organizationCode,
+              code: organizationCode.toLowerCase(),
+              trial_start_at: new Date().toISOString(),
+              trial_end_at: trialEndAt.toISOString(),
+            })
+            .select()
+            .single();
+
+          if (orgError) {
+            console.error('Error creating organization:', orgError);
+            return new Response(
+              JSON.stringify({ success: false, error: 'Nie udało się utworzyć firmy' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          orgId = newOrg.id;
+          isNewOrg = true;
+          assignedRole = 'management';
+          console.log(`User ${email} created new organization: ${newOrg.name}`);
+        }
       }
 
       // Check if this is the owner email - always gets management role
@@ -225,9 +361,9 @@ serve(async (req) => {
         .insert({
           organization_id: orgId,
           user_id: userId,
-          action_type: 'user_registered',
-          description: `Użytkownik ${fullName || email} ${isNewOrg ? 'utworzył firmę' : 'dołączył do firmy'}`,
-          metadata: { isNewOrg, role: assignedRole },
+          action_type: inviteToken ? 'invitation_accepted' : 'user_registered',
+          description: `Użytkownik ${fullName || email} ${isNewOrg ? 'utworzył firmę' : inviteToken ? 'dołączył przez zaproszenie' : 'dołączył do firmy'}`,
+          metadata: { isNewOrg, role: assignedRole, fromInvitation: !!inviteToken },
         });
 
       console.log(`Successfully assigned user ${email} to org ${orgId} with role ${assignedRole}`);
