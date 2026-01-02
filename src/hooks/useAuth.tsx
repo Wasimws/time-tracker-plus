@@ -10,6 +10,8 @@ interface Organization {
   id: string;
   name: string;
   code: string;
+  trialStartAt: Date | null;
+  trialEndAt: Date | null;
 }
 
 interface SubscriptionInfo {
@@ -70,42 +72,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setThemePreferenceState(profile.theme_preference as ThemePreference);
       }
 
-      // Fetch organization
+      // Fetch organization with trial info
       if (profile?.organization_id) {
         const { data: org } = await supabase
           .from('organizations')
-          .select('id, name, code')
+          .select('id, name, code, trial_start_at, trial_end_at')
           .eq('id', profile.organization_id)
           .maybeSingle();
 
         if (org) {
-          setOrganization(org);
-        }
-
-        // Fetch subscription status - ORGANIZATION LEVEL
-        const { data: subData } = await supabase
-          .from('subscriptions')
-          .select('status, trial_ends_at')
-          .eq('organization_id', profile.organization_id)
-          .maybeSingle();
-
-        if (subData) {
-          const trialEndsAt = subData.trial_ends_at ? new Date(subData.trial_ends_at) : null;
-          const isActive = subData.status === 'active' || 
-            (subData.status === 'trial' && trialEndsAt !== null && trialEndsAt > new Date());
+          const trialStartAt = org.trial_start_at ? new Date(org.trial_start_at) : null;
+          const trialEndAt = org.trial_end_at ? new Date(org.trial_end_at) : null;
           
-          setSubscription({
-            status: subData.status as SubscriptionStatus,
-            trialEndsAt,
-            isActive,
+          setOrganization({
+            id: org.id,
+            name: org.name,
+            code: org.code,
+            trialStartAt,
+            trialEndAt,
           });
+
+          // Check if trial is active (from organizations table)
+          const isTrialActive = trialEndAt !== null && trialEndAt > new Date();
+
+          // Fetch subscription status - ORGANIZATION LEVEL
+          const { data: subData } = await supabase
+            .from('subscriptions')
+            .select('status, trial_ends_at, current_period_end')
+            .eq('organization_id', profile.organization_id)
+            .maybeSingle();
+
+          if (subData) {
+            // Subscription active if status is 'active' OR organization trial is still running
+            const isActive = subData.status === 'active' || isTrialActive;
+            
+            setSubscription({
+              status: isTrialActive && subData.status !== 'active' ? 'trial' : subData.status as SubscriptionStatus,
+              trialEndsAt: trialEndAt,
+              isActive,
+            });
+          } else {
+            // No subscription record - check if trial is active
+            setSubscription({
+              status: isTrialActive ? 'trial' : 'inactive',
+              trialEndsAt: trialEndAt,
+              isActive: isTrialActive,
+            });
+          }
         } else {
-          // No subscription found for organization
-          setSubscription({
-            status: 'inactive',
-            trialEndsAt: null,
-            isActive: false,
-          });
+          setOrganization(null);
+          setSubscription(null);
         }
       } else {
         // User has no organization assigned yet
