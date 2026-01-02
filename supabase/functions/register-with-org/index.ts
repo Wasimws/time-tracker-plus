@@ -16,9 +16,18 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const ownerEmail = Deno.env.get('OWNER_EMAIL');
 
-    const { email, password, fullName, organizationCode, organizationName, action } = await req.json();
+    const { organizationCode, organizationName, action } = await req.json();
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get the user from the authorization header
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader && action === 'assign_org') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Brak autoryzacji' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Action: check if organization exists
     if (action === 'check_org') {
@@ -34,8 +43,53 @@ serve(async (req) => {
       );
     }
 
-    // Action: register user with organization
-    if (action === 'register') {
+    // Action: assign existing user to organization
+    if (action === 'assign_org') {
+      // Get user from JWT token
+      const token = authHeader!.replace('Bearer ', '');
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+      if (userError || !user) {
+        console.error('Error getting user:', userError);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Nie można zweryfikować użytkownika' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const userId = user.id;
+      const email = user.email!;
+      const fullName = user.user_metadata?.full_name || '';
+
+      // Check if user already has an organization
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (existingProfile?.organization_id) {
+        // User already assigned to an organization, return success
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('organization_id', existingProfile.organization_id)
+          .maybeSingle();
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            userId,
+            organizationId: existingProfile.organization_id,
+            isNewOrg: false,
+            role: userRole?.role || 'employee',
+            message: 'Użytkownik już przypisany do firmy'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Check if organization exists
       let orgId: string;
       let isNewOrg = false;
@@ -63,20 +117,15 @@ serve(async (req) => {
 
         if (orgError) {
           console.error('Error creating organization:', orgError);
-          throw new Error('Nie udało się utworzyć firmy');
+          return new Response(
+            JSON.stringify({ success: false, error: 'Nie udało się utworzyć firmy' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
 
         orgId = newOrg.id;
         isNewOrg = true;
         assignedRole = 'management';
-
-        // Create subscription for new organization
-        await supabase
-          .from('subscriptions')
-          .insert({
-            organization_id: orgId,
-            status: 'trial',
-          });
       }
 
       // Check if this is the owner email
@@ -84,57 +133,64 @@ serve(async (req) => {
         assignedRole = 'management';
       }
 
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: fullName,
-        },
-      });
-
-      if (authError) {
-        console.error('Error creating user:', authError);
-        
-        // If new org was created but user failed, clean up
-        if (isNewOrg) {
-          await supabase.from('organizations').delete().eq('id', orgId);
-        }
-        
-        if (authError.message.includes('already')) {
-          throw new Error('Ten email jest już zarejestrowany');
-        }
-        throw new Error(authError.message);
-      }
-
-      const userId = authData.user.id;
-
-      // Create profile with organization
+      // Update or create profile with organization
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
           id: userId,
           email: email,
           full_name: fullName,
           organization_id: orgId,
-        });
+        }, { onConflict: 'id' });
 
       if (profileError) {
-        console.error('Error creating profile:', profileError);
+        console.error('Error updating profile:', profileError);
       }
 
-      // Assign role
-      const { error: roleError } = await supabase
+      // Check if role already exists
+      const { data: existingRole } = await supabase
         .from('user_roles')
-        .insert({
-          user_id: userId,
-          role: assignedRole,
-          organization_id: orgId,
-        });
+        .select('id, role')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-      if (roleError) {
-        console.error('Error assigning role:', roleError);
+      if (existingRole) {
+        // Update existing role with organization
+        await supabase
+          .from('user_roles')
+          .update({ 
+            organization_id: orgId,
+            role: isNewOrg ? 'management' : existingRole.role 
+          })
+          .eq('id', existingRole.id);
+      } else {
+        // Create new role
+        await supabase
+          .from('user_roles')
+          .insert({
+            user_id: userId,
+            role: assignedRole,
+            organization_id: orgId,
+          });
+      }
+
+      // Create subscription for new organization
+      if (isNewOrg) {
+        const { data: existingSub } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('organization_id', orgId)
+          .maybeSingle();
+
+        if (!existingSub) {
+          await supabase
+            .from('subscriptions')
+            .insert({
+              user_id: userId,
+              organization_id: orgId,
+              status: 'trial',
+            });
+        }
       }
 
       // Log activity
@@ -144,7 +200,7 @@ serve(async (req) => {
           organization_id: orgId,
           user_id: userId,
           action_type: 'user_registered',
-          description: `Użytkownik ${fullName} (${email}) zarejestrował się ${isNewOrg ? 'i utworzył firmę' : 'w firmie'}`,
+          description: `Użytkownik ${fullName || email} ${isNewOrg ? 'utworzył firmę' : 'dołączył do firmy'}`,
           metadata: { isNewOrg, role: assignedRole },
         });
 

@@ -116,12 +116,38 @@ export default function Auth() {
     }
 
     try {
+      // First, register the user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: signupData.email,
+        password: signupData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            full_name: signupData.fullName,
+          },
+        },
+      });
+
+      if (authError) {
+        if (authError.message.includes('already')) {
+          setError('Ten email jest już zarejestrowany. Spróbuj się zalogować.');
+        } else {
+          setError(authError.message);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      if (!authData.session) {
+        setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Now assign the user to an organization using the edge function
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
-          action: 'register',
-          email: signupData.email,
-          password: signupData.password,
-          fullName: signupData.fullName,
+          action: 'assign_org',
           organizationCode: orgCode,
           organizationName: orgName || orgCode,
         },
@@ -130,14 +156,7 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Sign in the user
-      const { error: signInError } = await signIn(signupData.email, signupData.password);
-      
-      if (signInError) {
-        setError('Rejestracja udana, ale logowanie nie powiodło się. Spróbuj zalogować się ręcznie.');
-      } else {
-        navigate('/');
-      }
+      navigate('/');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
