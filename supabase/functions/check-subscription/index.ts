@@ -61,13 +61,36 @@ serve(async (req) => {
 
     logStep("Organization found", { organizationId: profile.organization_id });
 
+    // Check organization trial status first
+    const { data: orgData } = await supabaseClient
+      .from('organizations')
+      .select('trial_end_at')
+      .eq('id', profile.organization_id)
+      .single();
+
+    const isTrialActive = orgData?.trial_end_at && new Date(orgData.trial_end_at) > new Date();
+    logStep("Trial status", { isTrialActive, trialEndAt: orgData?.trial_end_at });
+
+    // If trial is active, user has access - no need to check Stripe
+    if (isTrialActive) {
+      logStep("Organization trial is active - granting access");
+      return new Response(JSON.stringify({ 
+        subscribed: true,
+        trial_active: true,
+        trial_end: orgData.trial_end_at,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     // Find customer by user email
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
 
     if (customers.data.length === 0) {
-      logStep("No Stripe customer found");
+      logStep("No Stripe customer found and trial expired");
       return new Response(JSON.stringify({ subscribed: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

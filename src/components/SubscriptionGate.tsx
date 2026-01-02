@@ -92,10 +92,10 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
           </div>
           <CardTitle>Brak aktywnej subskrypcji</CardTitle>
           <CardDescription>
-            {subscription?.status === 'trial' && subscription.trialEndsAt ? (
+            {organization.trialEndAt && new Date(organization.trialEndAt) < new Date() ? (
               <>
                 Okres próbny firmy <strong>{organization.name}</strong> wygasł{' '}
-                {format(subscription.trialEndsAt, 'd MMMM yyyy', { locale: pl })}.
+                {format(organization.trialEndAt, 'd MMMM yyyy', { locale: pl })}.
               </>
             ) : (
               <>
@@ -109,7 +109,7 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
           <div className="flex items-center justify-center gap-2">
             <Badge variant="outline">{organization.name}</Badge>
             <Badge variant="destructive">
-              {subscription?.status === 'trial' ? 'Trial wygasł' : 'Nieaktywna'}
+              {organization.trialEndAt && new Date(organization.trialEndAt) < new Date() ? 'Trial wygasł' : 'Nieaktywna'}
             </Badge>
           </div>
           
