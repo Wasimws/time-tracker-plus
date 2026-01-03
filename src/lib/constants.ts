@@ -8,8 +8,11 @@ export const TRIAL_DURATION_DAYS = 3;
 export const TRIAL_DURATION_HOURS = 72;
 
 // Subscription pricing
-export const SUBSCRIPTION_PRICE_MONTHLY = 99.99;
+export const SUBSCRIPTION_PRICE_MONTHLY = 100;
 export const SUBSCRIPTION_CURRENCY = 'PLN';
+
+// Activity logging - cooldown to prevent duplicates (in ms)
+export const ACTIVITY_LOG_COOLDOWN_MS = 30000; // 30 seconds
 
 // Invitation configuration
 export const INVITATION_EXPIRY_DAYS = 7;

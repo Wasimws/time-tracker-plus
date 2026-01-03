@@ -75,6 +75,9 @@ export function InvitationManagement() {
   const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Prevent double-click
+    if (isSending) return;
+    
     // Double-check permission before sending
     if (!guard.canInvite) {
       toast({

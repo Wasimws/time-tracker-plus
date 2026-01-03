@@ -68,10 +68,10 @@ serve(async (req) => {
     }
     logStep("User is management");
 
-    // Get organization details
+    // Get organization details INCLUDING trial and subscription status
     const { data: org } = await supabase
       .from("organizations")
-      .select("name, code")
+      .select("id, name, code, trial_end_at")
       .eq("id", profile.organization_id)
       .single();
 
@@ -79,6 +79,26 @@ serve(async (req) => {
       throw new Error("Organization not found");
     }
     logStep("Organization found", { name: org.name });
+
+    // CHECK SUBSCRIPTION STATUS - block if trial expired and no active subscription
+    const now = new Date();
+    const trialEndAt = org.trial_end_at ? new Date(org.trial_end_at) : null;
+    const isTrialActive = trialEndAt && trialEndAt > now;
+
+    // Check for active Stripe subscription
+    const { data: subData } = await supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("organization_id", profile.organization_id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const hasActiveStripeSubscription = !!subData;
+
+    if (!isTrialActive && !hasActiveStripeSubscription) {
+      throw new Error("Trial zakończony lub brak aktywnej subskrypcji. Nie można wysyłać zaproszeń.");
+    }
+    logStep("Subscription check passed", { isTrialActive, hasActiveStripeSubscription });
 
     const { email, role = "employee" } = await req.json();
 

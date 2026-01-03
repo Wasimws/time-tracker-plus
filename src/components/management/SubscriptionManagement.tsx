@@ -223,7 +223,7 @@ export function SubscriptionManagement() {
         </CardHeader>
         <CardContent>
           <div className="flex items-baseline gap-1 mb-4">
-            <span className="text-3xl font-bold">29,99</span>
+            <span className="text-3xl font-bold">100</span>
             <span className="text-muted-foreground">PLN / miesiąc</span>
           </div>
           <ul className="space-y-2 text-sm">

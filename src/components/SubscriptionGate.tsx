@@ -191,7 +191,7 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
                 {isLoading ? 'Przekierowanie...' : 'Aktywuj subskrypcję'}
               </Button>
               <p className="text-sm text-muted-foreground">
-                Cena: {SUBSCRIPTION_PRICE_MONTHLY.toFixed(2)} {SUBSCRIPTION_CURRENCY} / miesiąc za firmę
+                Cena: {SUBSCRIPTION_PRICE_MONTHLY} {SUBSCRIPTION_CURRENCY} / miesiąc za firmę
               </p>
             </>
           ) : (

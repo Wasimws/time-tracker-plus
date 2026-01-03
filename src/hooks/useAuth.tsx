@@ -1,6 +1,7 @@
-import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { ACTIVITY_LOG_COOLDOWN_MS } from '@/lib/constants';
 
 type AppRole = 'employee' | 'management';
 type ThemePreference = 'light' | 'dark' | 'system';
@@ -49,8 +50,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
+  
+  // Track if real user-initiated login happened (vs session rehydration)
+  const isRealLoginRef = useRef(false);
+  // Cooldown tracking for activity logs to prevent duplicates
+  const lastActivityLogRef = useRef<Map<string, number>>(new Map());
 
   const logActivityInternal = useCallback(async (_userId: string, actionType: string, description: string, metadata?: Record<string, unknown>) => {
+    // Check cooldown to prevent duplicate entries
+    const key = `${actionType}_${_userId}`;
+    const now = Date.now();
+    const lastLog = lastActivityLogRef.current.get(key);
+    
+    if (lastLog && now - lastLog < ACTIVITY_LOG_COOLDOWN_MS) {
+      console.log(`[Activity] Skipped duplicate: ${actionType} (cooldown active)`);
+      return;
+    }
+    
+    lastActivityLogRef.current.set(key, now);
+    
     try {
       await supabase.rpc('log_activity', {
         _action_type: actionType,
@@ -176,8 +194,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTimeout(() => {
             if (mounted) {
               fetchUserData(session.user.id);
-              if (event === 'SIGNED_IN') {
+              // Only log login if it was triggered by real user action (signIn method)
+              // NOT on session rehydration (page refresh, token refresh)
+              if (event === 'SIGNED_IN' && isRealLoginRef.current) {
                 logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
+                isRealLoginRef.current = false; // Reset flag after logging
               }
             }
           }, 0);
@@ -191,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // Get initial session
+    // Get initial session - this is page load/refresh, NOT a real login
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       
@@ -215,10 +236,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUserData, logActivityInternal]);
 
   const signIn = async (email: string, password: string) => {
+    // Mark that this is a REAL user-initiated login
+    isRealLoginRef.current = true;
+    
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
+    // If error, reset the flag
+    if (error) {
+      isRealLoginRef.current = false;
+    }
     
     return { error: error as Error | null };
   };
