@@ -7,6 +7,11 @@ export const APP_TAGLINE = 'Profesjonalny system zarządzania czasem pracy';
 export const TRIAL_DURATION_DAYS = 3;
 export const TRIAL_DURATION_HOURS = 72;
 
+// Trial limits (only apply during trial, not with active subscription)
+export const TRIAL_MAX_EMPLOYEES = 3;
+export const TRIAL_MAX_TIME_ENTRIES = 50;
+export const TRIAL_MAX_INVITATIONS = 5;
+
 // Subscription pricing
 export const SUBSCRIPTION_PRICE_MONTHLY = 100;
 export const SUBSCRIPTION_CURRENCY = 'PLN';

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscriptionGuard } from '@/hooks/useSubscriptionGuard';
+import { useTrialLimits } from '@/hooks/useTrialLimits';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Lock } from 'lucide-react';
+import { Loader2, Plus, Lock, AlertTriangle } from 'lucide-react';
 
 interface TimeEntryFormProps {
   onEntryAdded: () => void;
@@ -26,6 +27,7 @@ interface TimeEntryFormProps {
 export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizationId }: TimeEntryFormProps) {
   const { user, logActivity } = useAuth();
   const guard = useSubscriptionGuard();
+  const limits = useTrialLimits();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [date, setDate] = useState(editEntry?.work_date || new Date().toISOString().split('T')[0]);
@@ -40,6 +42,16 @@ export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizat
       toast({
         title: 'Brak uprawnień',
         description: 'Trial zakończony lub brak subskrypcji. Aktywuj subskrypcję, aby dodawać wpisy.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check trial limits (only for new entries, not edits)
+    if (!editEntry && !limits.canAddTimeEntry) {
+      toast({
+        title: 'Limit osiągnięty',
+        description: `Osiągnięto limit ${limits.maxTimeEntries} wpisów w trialu. Aktywuj subskrypcję, aby dodawać więcej.`,
         variant: 'destructive',
       });
       return;
@@ -146,6 +158,10 @@ export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizat
     );
   }
 
+  // Show limit warning during trial
+  const showLimitWarning = limits.limitsApply && !editEntry;
+  const limitReached = !limits.canAddTimeEntry;
+
   return (
     <Card>
       <CardHeader>
@@ -154,9 +170,22 @@ export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizat
         </CardTitle>
         <CardDescription>
           {editEntry ? 'Zmień dane wpisu godzinowego' : 'Wprowadź datę i liczbę przepracowanych godzin'}
+          {showLimitWarning && (
+            <span className="ml-2 text-yellow-600">
+              ({limits.timeEntryCount}/{limits.maxTimeEntries} wpisów w trialu)
+            </span>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {limitReached && (
+          <Alert className="mb-4 border-yellow-500/50 bg-yellow-500/10">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertDescription className="text-yellow-600">
+              Osiągnięto limit {limits.maxTimeEntries} wpisów w trialu. Aktywuj subskrypcję, aby dodawać więcej.
+            </AlertDescription>
+          </Alert>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -199,7 +228,7 @@ export function TimeEntryForm({ onEntryAdded, editEntry, onCancelEdit, organizat
             />
           </div>
           <div className="flex gap-2">
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || limitReached}>
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

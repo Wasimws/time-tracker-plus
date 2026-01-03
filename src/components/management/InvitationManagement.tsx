@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSubscriptionGuard } from '@/hooks/useSubscriptionGuard';
+import { useTrialLimits } from '@/hooks/useTrialLimits';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mail, UserPlus, Loader2, X, RefreshCw, Clock, CheckCircle, XCircle, Lock } from 'lucide-react';
+import { Mail, UserPlus, Loader2, X, RefreshCw, Clock, CheckCircle, XCircle, Lock, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
@@ -28,6 +29,7 @@ interface Invitation {
 export function InvitationManagement() {
   const { session, organization } = useAuth();
   const guard = useSubscriptionGuard();
+  const limits = useTrialLimits();
   const { toast } = useToast();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +85,16 @@ export function InvitationManagement() {
       toast({
         title: 'Brak uprawnień',
         description: 'Trial zakończony lub brak subskrypcji. Aktywuj subskrypcję, aby zapraszać użytkowników.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check trial limits
+    if (!limits.canSendInvitation) {
+      toast({
+        title: 'Limit osiągnięty',
+        description: `Osiągnięto limit ${limits.maxInvitations} zaproszeń w trialu. Aktywuj subskrypcję, aby zapraszać więcej.`,
         variant: 'destructive',
       });
       return;
@@ -173,22 +185,31 @@ export function InvitationManagement() {
     }
   };
 
+  const invitationLimitReached = limits.limitsApply && !limits.canSendInvitation;
+
   return (
     <div className="space-y-6">
-      <Card className={!guard.canInvite ? 'opacity-75' : ''}>
+      <Card className={!guard.canInvite || invitationLimitReached ? 'opacity-75' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            {guard.canInvite ? (
+            {guard.canInvite && !invitationLimitReached ? (
               <UserPlus className="h-5 w-5" />
             ) : (
               <Lock className="h-5 w-5 text-muted-foreground" />
             )}
             Zaproś pracownika
+            {limits.limitsApply && (
+              <Badge variant="outline" className="ml-2">
+                {limits.invitationCount}/{limits.maxInvitations} w trialu
+              </Badge>
+            )}
           </CardTitle>
           <CardDescription>
-            {guard.canInvite 
-              ? 'Wyślij zaproszenie email do nowego członka zespołu'
-              : 'Zapraszanie zablokowane – aktywuj subskrypcję'
+            {!guard.canInvite 
+              ? 'Zapraszanie zablokowane – aktywuj subskrypcję'
+              : invitationLimitReached
+              ? 'Osiągnięto limit zaproszeń w trialu'
+              : 'Wyślij zaproszenie email do nowego członka zespołu'
             }
           </CardDescription>
         </CardHeader>
@@ -201,6 +222,13 @@ export function InvitationManagement() {
                   ? 'Trial zakończony – aktywuj subskrypcję, aby zapraszać nowych użytkowników'
                   : 'Brak aktywnej subskrypcji – funkcja zapraszania jest zablokowana'
                 }
+              </AlertDescription>
+            </Alert>
+          ) : invitationLimitReached ? (
+            <Alert className="border-yellow-500/50 bg-yellow-500/10">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-yellow-600">
+                Osiągnięto limit {limits.maxInvitations} zaproszeń w trialu. Aktywuj subskrypcję, aby zapraszać więcej użytkowników.
               </AlertDescription>
             </Alert>
           ) : (
