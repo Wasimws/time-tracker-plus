@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const [role, setRole] = useState<AppRole | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
@@ -161,16 +162,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchUserData]);
 
   useEffect(() => {
+    let mounted = true;
+
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (!mounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // Use setTimeout to avoid Supabase auth deadlock
           setTimeout(() => {
-            fetchUserData(session.user.id);
-            if (event === 'SIGNED_IN') {
-              logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
+            if (mounted) {
+              fetchUserData(session.user.id);
+              if (event === 'SIGNED_IN') {
+                logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
+              }
             }
           }, 0);
         } else {
@@ -178,22 +186,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setOrganization(null);
           setSubscription(null);
           setLoading(false);
+          setInitialLoadComplete(true);
         }
       }
     );
 
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchUserData(session.user.id);
+        fetchUserData(session.user.id).finally(() => {
+          if (mounted) setInitialLoadComplete(true);
+        });
       } else {
         setLoading(false);
+        setInitialLoadComplete(true);
       }
     });
 
-    return () => authSubscription.unsubscribe();
+    return () => {
+      mounted = false;
+      authSubscription.unsubscribe();
+    };
   }, [fetchUserData, logActivityInternal]);
 
   const signIn = async (email: string, password: string) => {

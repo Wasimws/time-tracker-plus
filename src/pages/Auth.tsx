@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -50,6 +51,7 @@ export default function Auth() {
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
+  const [gdprConsent, setGdprConsent] = useState(false);
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
@@ -144,6 +146,11 @@ export default function Auth() {
   const handleSignUpStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+
+    if (!gdprConsent) {
+      setError('Musisz zaakceptować Politykę Prywatności, aby kontynuować');
+      return;
+    }
 
     const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
@@ -460,7 +467,37 @@ export default function Auth() {
                       <p className="text-xs text-primary">✓ Hasło spełnia wymagania</p>
                     )}
                   </div>
-                  <Button type="submit" className="w-full" disabled={isLoading || passwordErrors.length > 0}>
+                  
+                  {/* GDPR Consent Checkbox */}
+                  <div className="flex items-start space-x-2">
+                    <Checkbox
+                      id="gdpr-consent"
+                      checked={gdprConsent}
+                      onCheckedChange={(checked) => setGdprConsent(checked === true)}
+                      disabled={isLoading}
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <label
+                        htmlFor="gdpr-consent"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        Akceptuję{' '}
+                        <Link to="/privacy-policy" className="text-primary hover:underline" target="_blank">
+                          Politykę Prywatności
+                        </Link>
+                        {' '}i{' '}
+                        <Link to="/cookie-policy" className="text-primary hover:underline" target="_blank">
+                          Politykę Cookies
+                        </Link>
+                        {' '}*
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Wyrażam zgodę na przetwarzanie moich danych osobowych zgodnie z RODO
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={isLoading || passwordErrors.length > 0 || !gdprConsent}>
                     {inviteInfo?.valid ? 'Utwórz konto i dołącz' : 'Dalej - Wybór firmy'}
                   </Button>
                 </form>
@@ -569,8 +606,17 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
         </CardContent>
-        <CardFooter className="text-center text-sm text-muted-foreground flex-col gap-2">
+        <CardFooter className="text-center text-sm text-muted-foreground flex-col gap-3">
           <p>{TRIAL_DURATION_DAYS} dni bezpłatnego okresu próbnego</p>
+          <div className="flex flex-wrap justify-center gap-2 text-xs">
+            <Link to="/privacy-policy" className="hover:text-primary hover:underline">
+              Polityka Prywatności
+            </Link>
+            <span>•</span>
+            <Link to="/cookie-policy" className="hover:text-primary hover:underline">
+              Polityka Cookies
+            </Link>
+          </div>
           <Badge variant="secondary">Multi-tenant SaaS</Badge>
         </CardFooter>
       </Card>
