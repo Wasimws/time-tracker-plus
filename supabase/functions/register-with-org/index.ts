@@ -325,13 +325,14 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existingRole) {
-        // Update existing role with organization
+        // Update existing role with organization and mark as creator if applicable
         const newRole = isNewOrg ? 'management' : existingRole.role;
         await supabase
           .from('user_roles')
           .update({ 
             organization_id: orgId,
-            role: assignedRole === 'management' ? 'management' : newRole 
+            role: assignedRole === 'management' ? 'management' : newRole,
+            is_org_creator: isOrgCreator
           })
           .eq('id', existingRole.id);
         
@@ -344,6 +345,7 @@ serve(async (req) => {
             user_id: userId,
             role: assignedRole,
             organization_id: orgId,
+            is_org_creator: isOrgCreator
           });
       }
 

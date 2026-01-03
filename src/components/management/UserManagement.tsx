@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Users, Shield, User } from 'lucide-react';
+import { Loader2, Users, Shield, User, Crown } from 'lucide-react';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
@@ -15,6 +15,7 @@ interface UserWithRole {
   email: string;
   fullName: string;
   role: 'employee' | 'management';
+  isOrgCreator: boolean;
   createdAt: string;
 }
 
@@ -39,32 +40,41 @@ export function UserManagement() {
 
       if (profilesError) throw profilesError;
 
-      // Fetch all user roles
+      // Fetch all user roles with is_org_creator
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
-        .select('user_id, role');
+        .select('user_id, role, is_org_creator');
 
       if (rolesError) throw rolesError;
 
       // Create a map of user roles
-      const rolesMap = new Map<string, 'employee' | 'management'>();
+      const rolesMap = new Map<string, { role: 'employee' | 'management'; isOrgCreator: boolean }>();
       roles?.forEach(r => {
-        rolesMap.set(r.user_id, r.role as 'employee' | 'management');
+        rolesMap.set(r.user_id, { 
+          role: r.role as 'employee' | 'management',
+          isOrgCreator: r.is_org_creator || false
+        });
       });
 
       // Combine data
-      const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => ({
-        id: profile.id,
-        email: profile.email,
-        fullName: profile.full_name || 'Brak nazwy',
-        role: rolesMap.get(profile.id) || 'employee',
-        createdAt: profile.created_at,
-      }));
+      const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
+        const roleData = rolesMap.get(profile.id);
+        return {
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.full_name || 'Brak nazwy',
+          role: roleData?.role || 'employee',
+          isOrgCreator: roleData?.isOrgCreator || false,
+          createdAt: profile.created_at,
+        };
+      });
 
-      // Sort by creation date
-      usersWithRoles.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      // Sort: org creators first, then by creation date
+      usersWithRoles.sort((a, b) => {
+        if (a.isOrgCreator && !b.isOrgCreator) return -1;
+        if (!a.isOrgCreator && b.isOrgCreator) return 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
 
       setUsers(usersWithRoles);
     } catch (error) {
@@ -85,6 +95,17 @@ export function UserManagement() {
       toast({
         title: 'Błąd',
         description: 'Nie możesz zmienić własnej roli',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check if user is org creator
+    const targetUser = users.find(u => u.id === userId);
+    if (targetUser?.isOrgCreator) {
+      toast({
+        title: 'Błąd',
+        description: 'Nie można zmienić roli twórcy firmy. Twórca organizacji jest chroniony.',
         variant: 'destructive',
       });
       return;
@@ -112,17 +133,19 @@ export function UserManagement() {
     } catch (error: unknown) {
       console.error('Error updating role:', error);
       
-      // Check for last management user error
+      // Check for creator protection or last management user error
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const isCreatorError = errorMessage.includes('twórcy') || errorMessage.includes('creator');
       const isLastManagementError = errorMessage.includes('last management user') || 
-        (error && typeof error === 'object' && 'message' in error && 
-         String((error as { message: string }).message).includes('last management user'));
+        errorMessage.includes('ostatniego administratora');
       
       toast({
         title: 'Błąd',
-        description: isLastManagementError 
-          ? 'Nie można usunąć ostatniego administratora. System musi mieć co najmniej jednego użytkownika z rolą Zarząd.'
-          : 'Nie udało się zmienić roli użytkownika',
+        description: isCreatorError
+          ? 'Nie można zmienić roli twórcy firmy. Twórca organizacji jest chroniony.'
+          : isLastManagementError 
+            ? 'Nie można usunąć ostatniego administratora. Organizacja musi mieć co najmniej jednego użytkownika z rolą Zarząd.'
+            : 'Nie udało się zmienić roli użytkownika',
         variant: 'destructive',
       });
       
@@ -210,13 +233,20 @@ export function UserManagement() {
                   {users.map(userItem => {
                     const isCurrentUser = userItem.id === user?.id;
                     const isUpdating = updatingUserId === userItem.id;
+                    const canChangeRole = !isCurrentUser && !userItem.isOrgCreator;
 
                     return (
                       <TableRow key={userItem.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {userItem.fullName}
-                            {isCurrentUser && (
+                            {userItem.isOrgCreator && (
+                              <Badge variant="default" className="bg-amber-500 hover:bg-amber-600 text-xs flex items-center gap-1">
+                                <Crown className="h-3 w-3" />
+                                Właściciel
+                              </Badge>
+                            )}
+                            {isCurrentUser && !userItem.isOrgCreator && (
                               <Badge variant="outline" className="text-xs">Ty</Badge>
                             )}
                           </div>
@@ -228,10 +258,11 @@ export function UserManagement() {
                           {format(new Date(userItem.createdAt), 'd MMM yyyy', { locale: pl })}
                         </TableCell>
                         <TableCell>
-                          {isCurrentUser ? (
+                          {!canChangeRole ? (
                             <Badge variant="secondary" className="flex items-center gap-1 w-fit">
                               <Shield className="h-3 w-3" />
                               Zarząd
+                              {userItem.isOrgCreator && <span className="text-xs">(chroniony)</span>}
                             </Badge>
                           ) : (
                             <Select

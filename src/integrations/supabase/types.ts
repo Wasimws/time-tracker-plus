@@ -280,6 +280,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_org_creator: boolean | null
           organization_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
@@ -287,6 +288,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_org_creator?: boolean | null
           organization_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           user_id: string
@@ -294,6 +296,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_org_creator?: boolean | null
           organization_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
@@ -318,6 +321,7 @@ export type Database = {
         Args: { _org_id: string }
         Returns: number
       }
+      get_org_creator_id: { Args: { _org_id: string }; Returns: string }
       get_user_organization_id: { Args: { _user_id: string }; Returns: string }
       has_active_subscription: { Args: { _user_id: string }; Returns: boolean }
       has_org_access: { Args: { _org_id: string }; Returns: boolean }
@@ -333,6 +337,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_org_creator: {
+        Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
       is_org_trial_active: { Args: { _org_id: string }; Returns: boolean }
