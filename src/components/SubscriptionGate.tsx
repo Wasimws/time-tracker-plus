@@ -1,22 +1,25 @@
 import { ReactNode, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscriptionGuard } from '@/hooks/useSubscriptionGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CreditCard, Building2, Loader2 } from 'lucide-react';
+import { AlertTriangle, CreditCard, Building2, Loader2, Clock, Lock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
+import { SUBSCRIPTION_PRICE_MONTHLY, SUBSCRIPTION_CURRENCY } from '@/lib/constants';
 
 interface SubscriptionGateProps {
   children: ReactNode;
-  /** If true, shows content but with edit restrictions */
+  /** If true, shows content with view-only restrictions banner */
   allowViewOnly?: boolean;
 }
 
 export function SubscriptionGate({ children, allowViewOnly = false }: SubscriptionGateProps) {
-  const { hasActiveSubscription, subscription, organization, role, session } = useAuth();
+  const { role, session, organization } = useAuth();
+  const guard = useSubscriptionGuard();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -57,13 +60,20 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
     }
   };
 
-  // If organization subscription is active, allow full access
-  if (hasActiveSubscription) {
-    return <>{children}</>;
+  // Loading state with timeout protection
+  if (guard.isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Sprawdzanie statusu subskrypcji...</p>
+        </div>
+      </div>
+    );
   }
 
-  // No organization assigned - show different message
-  if (!organization) {
+  // No organization assigned
+  if (!guard.hasOrganization) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="max-w-md">
@@ -82,7 +92,62 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
     );
   }
 
-  // Subscription inactive - show paywall
+  // Full access - render children directly
+  if (guard.access === 'full') {
+    return (
+      <>
+        {/* Show trial warning banner if in trial */}
+        {guard.isTrialActive && (
+          <div className="mb-4 p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
+            <Clock className="h-5 w-5 text-warning" />
+            <div className="flex-1">
+              <p className="text-sm font-medium">
+                Okres próbny: {guard.trialDaysRemaining} {guard.trialDaysRemaining === 1 ? 'dzień' : 'dni'} pozostało
+              </p>
+              {guard.trialEndDate && (
+                <p className="text-xs text-muted-foreground">
+                  Wygasa: {format(guard.trialEndDate, 'd MMMM yyyy, HH:mm', { locale: pl })}
+                </p>
+              )}
+            </div>
+            {role === 'management' && (
+              <Button size="sm" variant="outline" onClick={handleSubscribe} disabled={isLoading}>
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subskrybuj'}
+              </Button>
+            )}
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
+
+  // View-only mode with banner (trial expired but allowing view)
+  if (guard.access === 'view_only' && allowViewOnly) {
+    return (
+      <>
+        <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-3">
+          <Lock className="h-5 w-5 text-destructive" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-destructive">
+              Trial zakończony – aktywuj subskrypcję
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Możesz przeglądać dane, ale dodawanie i edycja są zablokowane
+            </p>
+          </div>
+          {role === 'management' && (
+            <Button size="sm" onClick={handleSubscribe} disabled={isLoading}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subskrybuj'}
+            </Button>
+          )}
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  // Blocked - show paywall
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Card className="max-w-md">
@@ -90,26 +155,28 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
           <div className="flex justify-center mb-4">
             <AlertTriangle className="h-12 w-12 text-destructive" />
           </div>
-          <CardTitle>Brak aktywnej subskrypcji</CardTitle>
+          <CardTitle>
+            {guard.isTrialExpired ? 'Trial zakończony' : 'Brak aktywnej subskrypcji'}
+          </CardTitle>
           <CardDescription>
-            {organization.trialEndAt && new Date(organization.trialEndAt) < new Date() ? (
+            {guard.isTrialExpired && guard.trialEndDate ? (
               <>
-                Okres próbny firmy <strong>{organization.name}</strong> wygasł{' '}
-                {format(organization.trialEndAt, 'd MMMM yyyy', { locale: pl })}.
+                Okres próbny firmy <strong>{organization?.name}</strong> wygasł{' '}
+                {format(guard.trialEndDate, 'd MMMM yyyy', { locale: pl })}.
               </>
             ) : (
               <>
-                Subskrypcja firmy <strong>{organization.name}</strong> jest nieaktywna.
+                Subskrypcja firmy <strong>{organization?.name}</strong> jest nieaktywna.
               </>
             )}
-            {' '}Odnów subskrypcję, aby kontynuować korzystanie z aplikacji.
+            {' '}Aktywuj subskrypcję, aby kontynuować korzystanie z aplikacji.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center space-y-4">
           <div className="flex items-center justify-center gap-2">
-            <Badge variant="outline">{organization.name}</Badge>
+            <Badge variant="outline">{organization?.name}</Badge>
             <Badge variant="destructive">
-              {organization.trialEndAt && new Date(organization.trialEndAt) < new Date() ? 'Trial wygasł' : 'Nieaktywna'}
+              {guard.isTrialExpired ? 'Trial wygasł' : 'Nieaktywna'}
             </Badge>
           </div>
           
@@ -121,15 +188,15 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
                 ) : (
                   <CreditCard className="mr-2 h-4 w-4" />
                 )}
-                {isLoading ? 'Przekierowanie...' : 'Odnów subskrypcję'}
+                {isLoading ? 'Przekierowanie...' : 'Aktywuj subskrypcję'}
               </Button>
               <p className="text-sm text-muted-foreground">
-                Cena: 29,99 PLN / miesiąc za firmę
+                Cena: {SUBSCRIPTION_PRICE_MONTHLY.toFixed(2)} {SUBSCRIPTION_CURRENCY} / miesiąc za firmę
               </p>
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Skontaktuj się z zarządem firmy w celu odnowienia subskrypcji.
+              Skontaktuj się z zarządem firmy w celu aktywacji subskrypcji.
             </p>
           )}
         </CardContent>

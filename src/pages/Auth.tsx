@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,6 +39,9 @@ interface InviteInfo {
   error?: string;
 }
 
+// Timeout for loading states (10 seconds)
+const LOADING_TIMEOUT_MS = 10000;
+
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +59,33 @@ export default function Auth() {
   const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
   const { signIn, user, organization, refreshUserData } = useAuth();
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Set loading with timeout protection
+  const setLoadingWithTimeout = (loading: boolean) => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+    
+    setIsLoading(loading);
+    
+    if (loading) {
+      loadingTimeoutRef.current = setTimeout(() => {
+        setIsLoading(false);
+        setError('Przekroczono czas oczekiwania. Spróbuj ponownie.');
+      }, LOADING_TIMEOUT_MS);
+    }
+  };
 
   // Check invitation token on load
   useEffect(() => {
@@ -117,7 +147,7 @@ export default function Auth() {
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoadingWithTimeout(true);
     setError(null);
 
     const formData = new FormData(e.currentTarget);
@@ -132,7 +162,7 @@ export default function Auth() {
       } else {
         setError(error.message);
       }
-      setIsLoading(false);
+      setLoadingWithTimeout(false);
     }
     // Navigation will happen via useEffect when user state updates
   };
@@ -157,24 +187,30 @@ export default function Auth() {
     const password = formData.get('password') as string;
     const fullName = formData.get('fullName') as string;
 
+    // Validate inputs
+    if (!email.trim() || !fullName.trim()) {
+      setError('Wszystkie pola są wymagane');
+      return;
+    }
+
     const validation = validatePassword(password);
     if (!validation.valid) {
       setError(validation.errors[0]);
       return;
     }
 
-    setSignupData({ email, password, fullName });
+    setSignupData({ email: email.trim(), password, fullName: fullName.trim() });
     
     // If we have a valid invitation, skip organization step
     if (inviteInfo?.valid) {
-      handleInviteSignup(email, password, fullName);
+      handleInviteSignup(email.trim(), password, fullName.trim());
     } else {
       setSignupStep('organization');
     }
   };
 
   const handleInviteSignup = async (email: string, password: string, fullName: string) => {
-    setIsLoading(true);
+    setLoadingWithTimeout(true);
     setError(null);
 
     try {
@@ -196,13 +232,13 @@ export default function Auth() {
         } else {
           setError(authError.message);
         }
-        setIsLoading(false);
+        setLoadingWithTimeout(false);
         return;
       }
 
       if (!authData.session) {
         setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
-        setIsLoading(false);
+        setLoadingWithTimeout(false);
         return;
       }
 
@@ -221,21 +257,35 @@ export default function Auth() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
-    } finally {
-      setIsLoading(false);
+      setLoadingWithTimeout(false);
     }
   };
 
   const handleSignUpStep2 = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+    
+    // Prevent double-click
+    if (isLoading) return;
+    
+    // Block if org exists (must use invitation)
+    if (orgCheckResult?.exists) {
+      setError('Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora');
+      return;
+    }
+
+    // Block if still checking org
+    if (isCheckingOrg) {
+      setError('Poczekaj na sprawdzenie kodu firmy');
+      return;
+    }
 
     if (orgCode.length < 3) {
       setError('Kod firmy musi mieć co najmniej 3 znaki');
-      setIsLoading(false);
       return;
     }
+
+    setLoadingWithTimeout(true);
+    setError(null);
 
     try {
       // First, register the user with Supabase Auth
@@ -256,13 +306,13 @@ export default function Auth() {
         } else {
           setError(authError.message);
         }
-        setIsLoading(false);
+        setLoadingWithTimeout(false);
         return;
       }
 
       if (!authData.session) {
         setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
-        setIsLoading(false);
+        setLoadingWithTimeout(false);
         return;
       }
 
@@ -285,8 +335,7 @@ export default function Auth() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
-    } finally {
-      setIsLoading(false);
+      setLoadingWithTimeout(false);
     }
   };
 
@@ -301,8 +350,9 @@ export default function Auth() {
   // Show loading while checking auth state
   if (user && !organization) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Ładowanie danych organizacji...</p>
       </div>
     );
   }
@@ -312,6 +362,13 @@ export default function Auth() {
   }
 
   const passwordStrength = signupData.password ? getPasswordStrength(signupData.password) : null;
+
+  // Determine if Continue button should be disabled
+  const isStep2ButtonDisabled = 
+    isLoading || 
+    isCheckingOrg || 
+    orgCode.length < 3 || 
+    orgCheckResult?.exists === true;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -365,6 +422,7 @@ export default function Auth() {
                     id="signin-email"
                     name="email"
                     type="email"
+                    placeholder="twoj@email.com"
                     required
                     disabled={isLoading}
                   />
@@ -376,6 +434,7 @@ export default function Auth() {
                       id="signin-password"
                       name="password"
                       type={showPassword ? 'text' : 'password'}
+                      placeholder="Twoje hasło"
                       required
                       disabled={isLoading}
                     />
@@ -412,10 +471,14 @@ export default function Auth() {
                       id="signup-name"
                       name="fullName"
                       type="text"
+                      placeholder="Jan Kowalski"
                       required
                       disabled={isLoading}
                       defaultValue={signupData.fullName}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Będzie widoczne dla współpracowników
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
@@ -423,10 +486,14 @@ export default function Auth() {
                       id="signup-email"
                       name="email"
                       type="email"
+                      placeholder="jan.kowalski@example.com"
                       required
                       disabled={isLoading || (inviteInfo?.valid ?? false)}
                       defaultValue={signupData.email}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Używany do logowania i powiadomień
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-password">Hasło</Label>
@@ -435,6 +502,7 @@ export default function Auth() {
                         id="signup-password"
                         name="password"
                         type={showPassword ? 'text' : 'password'}
+                        placeholder="Min. 8 znaków, wielka litera, cyfra, znak specjalny"
                         required
                         disabled={isLoading}
                         onChange={(e) => {
@@ -513,6 +581,7 @@ export default function Auth() {
                       <Input
                         id="org-code"
                         type="text"
+                        placeholder="np. moja-firma"
                         value={orgCode}
                         onChange={(e) => setOrgCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                         required
@@ -524,7 +593,7 @@ export default function Auth() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Tylko małe litery, cyfry i myślniki
+                      Unikalny identyfikator Twojej firmy (tylko małe litery, cyfry i myślniki)
                     </p>
                   </div>
 
@@ -564,10 +633,14 @@ export default function Auth() {
                       <Input
                         id="org-name"
                         type="text"
+                        placeholder="np. Moja Firma Sp. z o.o."
                         value={orgName}
                         onChange={(e) => setOrgName(e.target.value)}
                         disabled={isLoading}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Wyświetlana nazwa firmy (opcjonalnie)
+                      </p>
                     </div>
                   )}
 
@@ -583,12 +656,17 @@ export default function Auth() {
                     <Button 
                       type="submit" 
                       className="flex-1" 
-                      disabled={isLoading || orgCode.length < 3 || (orgCheckResult?.exists === true)}
+                      disabled={isStep2ButtonDisabled}
                     >
                       {isLoading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Rejestracja...
+                        </>
+                      ) : isCheckingOrg ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sprawdzanie...
                         </>
                       ) : (
                         'Utwórz firmę i zarejestruj'

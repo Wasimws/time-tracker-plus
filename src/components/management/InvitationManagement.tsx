@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSubscriptionGuard } from '@/hooks/useSubscriptionGuard';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mail, UserPlus, Loader2, X, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Mail, UserPlus, Loader2, X, RefreshCw, Clock, CheckCircle, XCircle, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
@@ -25,6 +27,7 @@ interface Invitation {
 
 export function InvitationManagement() {
   const { session, organization } = useAuth();
+  const guard = useSubscriptionGuard();
   const { toast } = useToast();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,12 +74,34 @@ export function InvitationManagement() {
 
   const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Double-check permission before sending
+    if (!guard.canInvite) {
+      toast({
+        title: 'Brak uprawnień',
+        description: 'Trial zakończony lub brak subskrypcji. Aktywuj subskrypcję, aby zapraszać użytkowników.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     if (!session || !email) return;
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: 'Błąd',
+        description: 'Wprowadź poprawny adres email',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsSending(true);
     try {
       const { data, error } = await supabase.functions.invoke('send-invitation', {
-        body: { email, role },
+        body: { email: email.trim().toLowerCase(), role },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -147,52 +172,78 @@ export function InvitationManagement() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className={!guard.canInvite ? 'opacity-75' : ''}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5" />
+            {guard.canInvite ? (
+              <UserPlus className="h-5 w-5" />
+            ) : (
+              <Lock className="h-5 w-5 text-muted-foreground" />
+            )}
             Zaproś pracownika
           </CardTitle>
           <CardDescription>
-            Wyślij zaproszenie email do nowego członka zespołu
+            {guard.canInvite 
+              ? 'Wyślij zaproszenie email do nowego członka zespołu'
+              : 'Zapraszanie zablokowane – aktywuj subskrypcję'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSendInvitation} className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="invite-email">Email</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={isSending}
-              />
-            </div>
-            <div className="w-full sm:w-48 space-y-2">
-              <Label htmlFor="invite-role">Rola</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as 'employee' | 'management')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="employee">Pracownik</SelectItem>
-                  <SelectItem value="management">Zarząd</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button type="submit" disabled={isSending || !email}>
-                {isSending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4 mr-2" />
-                )}
-                {isSending ? 'Wysyłanie...' : 'Wyślij'}
-              </Button>
-            </div>
-          </form>
+          {!guard.canInvite ? (
+            <Alert>
+              <Lock className="h-4 w-4" />
+              <AlertDescription>
+                {guard.isTrialExpired 
+                  ? 'Trial zakończony – aktywuj subskrypcję, aby zapraszać nowych użytkowników'
+                  : 'Brak aktywnej subskrypcji – funkcja zapraszania jest zablokowana'
+                }
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <form onSubmit={handleSendInvitation} className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="invite-email">Email pracownika</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="jan.kowalski@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isSending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Link z zaproszeniem zostanie wysłany na ten adres
+                </p>
+              </div>
+              <div className="w-full sm:w-48 space-y-2">
+                <Label htmlFor="invite-role">Rola</Label>
+                <Select value={role} onValueChange={(v) => setRole(v as 'employee' | 'management')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Pracownik</SelectItem>
+                    <SelectItem value="management">Zarząd</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Uprawnienia użytkownika
+                </p>
+              </div>
+              <div className="flex items-end">
+                <Button type="submit" disabled={isSending || !email}>
+                  {isSending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4 mr-2" />
+                  )}
+                  {isSending ? 'Wysyłanie...' : 'Wyślij'}
+                </Button>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
 
