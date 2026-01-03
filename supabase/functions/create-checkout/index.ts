@@ -120,7 +120,7 @@ serve(async (req) => {
       customer: customerId,
       line_items: [
         {
-          price: "price_1Sl7MxDyWu3sDwmLGkXswSVt", // TimeTracker Pro monthly
+          price: "price_1SlaABDyWu3sDwmLFeYDx0TH", // TimeTracker Pro monthly - 99.99 PLN
           quantity: 1,
         },
       ],
