@@ -77,24 +77,41 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Check if Stripe customer exists for this organization (by org name in metadata or user email)
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    let customerId;
-    if (customers.data.length > 0) {
-      customerId = customers.data[0].id;
-      logStep("Existing Stripe customer found", { customerId });
-    } else {
+    // Validate email format - use organization name as fallback for Stripe
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const isValidEmail = emailRegex.test(user.email || '');
+    
+    // If email is invalid, we'll create customer without email and use org name
+    let customerId: string | undefined;
+    
+    if (isValidEmail) {
+      // Check if Stripe customer exists for this organization (by user email)
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      if (customers.data.length > 0) {
+        customerId = customers.data[0].id;
+        logStep("Existing Stripe customer found", { customerId });
+      }
+    }
+    
+    if (!customerId) {
       // Create new customer with organization metadata
-      const newCustomer = await stripe.customers.create({
-        email: user.email,
+      const customerData: Stripe.CustomerCreateParams = {
         name: org.name,
         metadata: {
           organization_id: org.id,
           organization_name: org.name,
+          user_id: user.id,
         },
-      });
+      };
+      
+      // Only add email if it's valid
+      if (isValidEmail) {
+        customerData.email = user.email;
+      }
+      
+      const newCustomer = await stripe.customers.create(customerData);
       customerId = newCustomer.id;
-      logStep("New Stripe customer created", { customerId });
+      logStep("New Stripe customer created", { customerId, hasEmail: isValidEmail });
     }
 
     const origin = req.headers.get("origin") || "https://almgfpaiknbgwkzgdrhs.lovableproject.com";
