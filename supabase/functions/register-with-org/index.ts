@@ -29,6 +29,11 @@ const validatePassword = (password: string): { valid: boolean; errors: string[] 
   return { valid: errors.length === 0, errors };
 };
 
+const logStep = (step: string, details?: unknown) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[REGISTER-WITH-ORG] ${step}${detailsStr}`);
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -131,7 +136,7 @@ serve(async (req) => {
       const { data: { user }, error: userError } = await supabase.auth.getUser(token);
 
       if (userError || !user) {
-        console.error('Error getting user:', userError);
+        logStep('Error getting user', userError);
         return new Response(
           JSON.stringify({ success: false, error: 'Nie można zweryfikować użytkownika' }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -142,7 +147,7 @@ serve(async (req) => {
       const email = user.email!;
       const fullName = user.user_metadata?.full_name || '';
 
-      console.log(`Processing assign_org for user ${email} (${userId})`);
+      logStep(`Processing assign_org for user ${email} (${userId})`);
 
       // Check if user already has an organization
       const { data: existingProfile } = await supabase
@@ -153,7 +158,7 @@ serve(async (req) => {
 
       if (existingProfile?.organization_id) {
         // User already assigned to an organization - return their current data
-        console.log(`User ${email} already has organization ${existingProfile.organization_id}`);
+        logStep(`User ${email} already has organization ${existingProfile.organization_id}`);
         
         const { data: userRole } = await supabase
           .from('user_roles')
@@ -186,6 +191,7 @@ serve(async (req) => {
       let orgId: string;
       let isNewOrg = false;
       let assignedRole: 'employee' | 'management' = 'employee';
+      let isOrgCreator = false;
 
       if (inviteToken) {
         // Process invitation
@@ -233,9 +239,9 @@ serve(async (req) => {
           .update({ status: 'accepted', accepted_at: new Date().toISOString() })
           .eq('id', invitation.id);
 
-        console.log(`User ${email} accepted invitation to org ${orgId} with role ${assignedRole}`);
+        logStep(`User ${email} accepted invitation to org ${orgId} with role ${assignedRole}`);
       } else {
-        // Check if organization exists
+        // Check if organization exists - BLOCK joining existing org without invitation
         const { data: existingOrg } = await supabase
           .from('organizations')
           .select('id, name, code')
@@ -243,9 +249,15 @@ serve(async (req) => {
           .maybeSingle();
 
         if (existingOrg) {
-          orgId = existingOrg.id;
-          assignedRole = 'employee';
-          console.log(`User ${email} joining existing organization: ${existingOrg.name}`);
+          // REJECT - cannot join existing organization without invitation
+          logStep(`User ${email} tried to join existing org ${existingOrg.name} without invitation - REJECTED`);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora. Skontaktuj się z zarządem firmy.' 
+            }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         } else {
           // Create new organization with 3-day trial
           const trialEndAt = new Date();
@@ -263,7 +275,7 @@ serve(async (req) => {
             .single();
 
           if (orgError) {
-            console.error('Error creating organization:', orgError);
+            logStep('Error creating organization', orgError);
             return new Response(
               JSON.stringify({ success: false, error: 'Nie udało się utworzyć firmy' }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -272,28 +284,33 @@ serve(async (req) => {
 
           orgId = newOrg.id;
           isNewOrg = true;
+          isOrgCreator = true;
           assignedRole = 'management';
-          console.log(`User ${email} created new organization: ${newOrg.name}`);
+          logStep(`User ${email} created new organization: ${newOrg.name}`);
         }
       }
 
       // Check if this is the owner email - always gets management role
       if (ownerEmail && email.toLowerCase() === ownerEmail.toLowerCase()) {
         assignedRole = 'management';
-        console.log(`User ${email} is owner email - assigning management role`);
+        logStep(`User ${email} is owner email - assigning management role`);
       }
 
-      // Update profile with organization
+      // Update profile with organization and mark as creator if applicable
+      const profileUpdateData: Record<string, unknown> = {
+        organization_id: orgId,
+      };
+      if (fullName) {
+        profileUpdateData.full_name = fullName;
+      }
+
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
-          organization_id: orgId,
-          full_name: fullName || undefined,
-        })
+        .update(profileUpdateData)
         .eq('id', userId);
 
       if (profileError) {
-        console.error('Error updating profile:', profileError);
+        logStep('Error updating profile', profileError);
         return new Response(
           JSON.stringify({ success: false, error: 'Nie udało się zaktualizować profilu' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -348,9 +365,9 @@ serve(async (req) => {
             });
 
           if (subError) {
-            console.error('Error creating subscription:', subError);
+            logStep('Error creating subscription', subError);
           } else {
-            console.log(`Created trial subscription for organization ${orgId}`);
+            logStep(`Created trial subscription for organization ${orgId}`);
           }
         }
       }
@@ -363,10 +380,10 @@ serve(async (req) => {
           user_id: userId,
           action_type: inviteToken ? 'invitation_accepted' : 'user_registered',
           description: `Użytkownik ${fullName || email} ${isNewOrg ? 'utworzył firmę' : inviteToken ? 'dołączył przez zaproszenie' : 'dołączył do firmy'}`,
-          metadata: { isNewOrg, role: assignedRole, fromInvitation: !!inviteToken },
+          metadata: { isNewOrg, role: assignedRole, fromInvitation: !!inviteToken, isOrgCreator },
         });
 
-      console.log(`Successfully assigned user ${email} to org ${orgId} with role ${assignedRole}`);
+      logStep(`Successfully assigned user ${email} to org ${orgId} with role ${assignedRole}`);
 
       return new Response(
         JSON.stringify({ 
@@ -375,6 +392,7 @@ serve(async (req) => {
           organizationId: orgId,
           isNewOrg,
           role: assignedRole,
+          isOrgCreator,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -386,7 +404,7 @@ serve(async (req) => {
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error in register-with-org function:', error);
+    logStep('Error in register-with-org function', { error: errorMessage });
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

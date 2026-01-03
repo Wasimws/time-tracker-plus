@@ -365,7 +365,6 @@ export default function Auth() {
                     id="signin-email"
                     name="email"
                     type="email"
-                    placeholder="jan@firma.pl"
                     required
                     disabled={isLoading}
                   />
@@ -413,7 +412,6 @@ export default function Auth() {
                       id="signup-name"
                       name="fullName"
                       type="text"
-                      placeholder="Jan Kowalski"
                       required
                       disabled={isLoading}
                       defaultValue={signupData.fullName}
@@ -425,7 +423,6 @@ export default function Auth() {
                       id="signup-email"
                       name="email"
                       type="email"
-                      placeholder="jan@firma.pl"
                       required
                       disabled={isLoading || (inviteInfo?.valid ?? false)}
                       defaultValue={signupData.email}
@@ -438,7 +435,6 @@ export default function Auth() {
                         id="signup-password"
                         name="password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Min. 8 znaków, duże i małe litery, cyfra, znak specjalny"
                         required
                         disabled={isLoading}
                         onChange={(e) => {
@@ -517,7 +513,6 @@ export default function Auth() {
                       <Input
                         id="org-code"
                         type="text"
-                        placeholder="np. mojafirma"
                         value={orgCode}
                         onChange={(e) => setOrgCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                         required
@@ -534,22 +529,22 @@ export default function Auth() {
                   </div>
 
                   {orgCheckResult && (
-                    <div className={`p-3 rounded-lg border ${orgCheckResult.exists ? 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' : 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800'}`}>
+                    <div className={`p-3 rounded-lg border ${orgCheckResult.exists ? 'bg-destructive/10 border-destructive/20' : 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800'}`}>
                       {orgCheckResult.exists ? (
                         <div className="flex items-start gap-2">
-                          <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                          <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
                           <div>
-                            <p className="font-medium text-blue-900 dark:text-blue-100">
-                              Dołączysz do firmy: {orgCheckResult.organization?.name}
+                            <p className="font-medium text-destructive">
+                              Firma już istnieje
                             </p>
-                            <p className="text-sm text-blue-700 dark:text-blue-300">
-                              Otrzymasz rolę Pracownika
+                            <p className="text-sm text-destructive/80">
+                              Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora
                             </p>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start gap-2">
-                          <AlertCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
+                          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
                           <div>
                             <p className="font-medium text-green-900 dark:text-green-100">
                               Utworzysz nową firmę
@@ -569,7 +564,6 @@ export default function Auth() {
                       <Input
                         id="org-name"
                         type="text"
-                        placeholder="Nazwa Twojej Firmy Sp. z o.o."
                         value={orgName}
                         onChange={(e) => setOrgName(e.target.value)}
                         disabled={isLoading}
@@ -589,7 +583,7 @@ export default function Auth() {
                     <Button 
                       type="submit" 
                       className="flex-1" 
-                      disabled={isLoading || orgCode.length < 3}
+                      disabled={isLoading || orgCode.length < 3 || (orgCheckResult?.exists === true)}
                     >
                       {isLoading ? (
                         <>
@@ -597,7 +591,7 @@ export default function Auth() {
                           Rejestracja...
                         </>
                       ) : (
-                        orgCheckResult?.exists ? 'Dołącz do firmy' : 'Utwórz firmę i zarejestruj'
+                        'Utwórz firmę i zarejestruj'
                       )}
                     </Button>
                   </div>
