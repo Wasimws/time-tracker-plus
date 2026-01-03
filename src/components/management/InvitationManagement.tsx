@@ -164,7 +164,6 @@ export function InvitationManagement() {
               <Input
                 id="invite-email"
                 type="email"
-                placeholder="pracownik@firma.pl"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
