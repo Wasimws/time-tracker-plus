@@ -58,7 +58,7 @@ export default function Index() {
 
   return (
     <Layout>
-      <SubscriptionGate>
+      <SubscriptionGate allowViewOnly>
         {role === 'management' ? <ManagementDashboard /> : <EmployeeDashboard />}
       </SubscriptionGate>
     </Layout>
