@@ -4,8 +4,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { Clock, LogOut, User, Shield, Building2 } from 'lucide-react';
+import { Clock, LogOut, User, Shield, Building2, Settings } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface LayoutProps {
   children: ReactNode;
@@ -58,16 +65,27 @@ export function Layout({ children }: LayoutProps) {
               )}
             </div>
             
-            <span className="text-sm text-muted-foreground hidden md:block">
-              {user?.email}
-            </span>
-            
             <ThemeToggle />
             
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Wyloguj</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <User className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline truncate max-w-[120px]">{user?.email}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/account')}>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Zarządzanie kontem
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Wyloguj
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
