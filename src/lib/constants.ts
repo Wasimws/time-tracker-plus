@@ -8,7 +8,7 @@ export const TRIAL_DURATION_DAYS = 3;
 export const TRIAL_DURATION_HOURS = 72;
 
 // Subscription pricing
-export const SUBSCRIPTION_PRICE_MONTHLY = 29.99;
+export const SUBSCRIPTION_PRICE_MONTHLY = 99.99;
 export const SUBSCRIPTION_CURRENCY = 'PLN';
 
 // Invitation configuration
