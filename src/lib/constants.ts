@@ -13,7 +13,7 @@ export const TRIAL_MAX_TIME_ENTRIES = 50;
 export const TRIAL_MAX_INVITATIONS = 5;
 
 // Subscription pricing
-export const SUBSCRIPTION_PRICE_MONTHLY = 100;
+export const SUBSCRIPTION_PRICE_MONTHLY = 99.99;
 export const SUBSCRIPTION_CURRENCY = 'PLN';
 
 // Activity logging - cooldown to prevent duplicates (in ms)

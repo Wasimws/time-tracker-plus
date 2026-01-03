@@ -12,6 +12,34 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[SEND-INVITATION] ${step}${detailsStr}`);
 };
 
+// Retry helper for email sending
+async function sendEmailWithRetry(
+  resend: Resend,
+  emailOptions: { from: string; to: string[]; subject: string; html: string },
+  maxRetries = 3
+): Promise<{ success: boolean; error?: unknown }> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      logStep(`Email send attempt ${attempt}/${maxRetries}`);
+      const { error } = await resend.emails.send(emailOptions);
+      if (!error) {
+        logStep("Email sent successfully");
+        return { success: true };
+      }
+      logStep(`Email attempt ${attempt} failed`, error);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+      }
+    } catch (err) {
+      logStep(`Email attempt ${attempt} exception`, err);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+  return { success: false, error: "All retry attempts failed" };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -25,7 +53,7 @@ serve(async (req) => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
     if (!resendApiKey) {
-      throw new Error("RESEND_API_KEY is not configured");
+      throw new Error("RESEND_API_KEY is not configured. Skontaktuj się z administratorem.");
     }
 
     const resend = new Resend(resendApiKey);
@@ -158,8 +186,8 @@ serve(async (req) => {
     const origin = req.headers.get("origin") || "https://hourlyx.app";
     const inviteLink = `${origin}/auth?invite=${invitation.token}`;
 
-    // Send email
-    const { error: emailError } = await resend.emails.send({
+    // Send email with retry
+    const emailResult = await sendEmailWithRetry(resend, {
       from: "Hourlyx <onboarding@resend.dev>",
       to: [email],
       subject: `Zaproszenie do ${org.name} - Hourlyx`,
@@ -204,14 +232,6 @@ serve(async (req) => {
       `,
     });
 
-    if (emailError) {
-      logStep("Email sending error", emailError);
-      // Don't throw - invitation was created, just email failed
-      console.error("Failed to send email:", emailError);
-    } else {
-      logStep("Email sent successfully");
-    }
-
     // Log activity
     await supabase
       .from("activity_log")
@@ -220,8 +240,22 @@ serve(async (req) => {
         user_id: user.id,
         action_type: "invitation_sent",
         description: `Wysłano zaproszenie do ${email}`,
-        metadata: { email, role },
+        metadata: { email, role, emailSent: emailResult.success },
       });
+
+    // If email failed after retries, return partial success with warning
+    if (!emailResult.success) {
+      logStep("Email sending failed after retries");
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          warning: "Zaproszenie zostało utworzone, ale wysyłka emaila nie powiodła się. Skopiuj link i wyślij ręcznie.",
+          invitation: { id: invitation.id, email, role, expires_at: invitation.expires_at, token: invitation.token },
+          inviteLink
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({ 

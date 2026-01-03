@@ -125,10 +125,27 @@ export function InvitationManagement() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      toast({
-        title: 'Zaproszenie wysłane',
-        description: `Zaproszenie zostało wysłane do ${email}`,
-      });
+      // Check for warning (email failed but invitation created)
+      if (data?.warning) {
+        toast({
+          title: 'Zaproszenie utworzone',
+          description: data.warning,
+          variant: 'destructive',
+        });
+        // Show copy-able link
+        if (data?.inviteLink) {
+          navigator.clipboard.writeText(data.inviteLink);
+          toast({
+            title: 'Link skopiowany',
+            description: 'Link z zaproszeniem został skopiowany do schowka',
+          });
+        }
+      } else {
+        toast({
+          title: 'Zaproszenie wysłane',
+          description: `Zaproszenie zostało wysłane do ${email}`,
+        });
+      }
 
       setEmail('');
       setRole('employee');

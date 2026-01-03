@@ -8,7 +8,11 @@ import { useToast } from '@/hooks/use-toast';
 import { CreditCard, Settings, Loader2, CheckCircle, AlertTriangle, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { pl } from 'date-fns/locale';
+import { SUBSCRIPTION_PRICE_MONTHLY, SUBSCRIPTION_CURRENCY } from '@/lib/constants';
 
+const formatPrice = (price: number) => {
+  return price % 1 === 0 ? price.toString() : price.toFixed(2).replace('.', ',');
+};
 export function SubscriptionManagement() {
   const { organization, subscription, session, hasActiveSubscription, hasStripeSubscription, refreshUserData } = useAuth();
   const { toast } = useToast();
@@ -223,8 +227,8 @@ export function SubscriptionManagement() {
         </CardHeader>
         <CardContent>
           <div className="flex items-baseline gap-1 mb-4">
-            <span className="text-3xl font-bold">100</span>
-            <span className="text-muted-foreground">PLN / miesiąc</span>
+            <span className="text-3xl font-bold">{formatPrice(SUBSCRIPTION_PRICE_MONTHLY)}</span>
+            <span className="text-muted-foreground">{SUBSCRIPTION_CURRENCY} / miesiąc</span>
           </div>
           <ul className="space-y-2 text-sm">
             <li className="flex items-center gap-2">
