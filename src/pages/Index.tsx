@@ -5,7 +5,7 @@ import { Layout } from '@/components/Layout';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { EmployeeDashboard } from '@/components/employee/EmployeeDashboard';
 import { ManagementDashboard } from '@/components/management/ManagementDashboard';
-import { ViewModeProvider, useViewMode } from '@/hooks/useViewMode';
+import { ViewModeProvider, useViewModeSafe } from '@/hooks/useViewMode';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -13,9 +13,10 @@ const MAX_LOADING_TIME = 15000; // 15 seconds max loading
 
 function DashboardContent() {
   const { role } = useAuth();
-  const { isEmployeeViewMode } = useViewMode();
+  const viewMode = useViewModeSafe();
 
-  // If management user is in employee view mode, show employee dashboard
+  // For employees (no ViewModeProvider) or management in employee mode, show employee dashboard
+  const isEmployeeViewMode = viewMode?.isEmployeeViewMode ?? false;
   const showEmployeeDashboard = role === 'employee' || (role === 'management' && isEmployeeViewMode);
 
   return showEmployeeDashboard ? <EmployeeDashboard /> : <ManagementDashboard />;
