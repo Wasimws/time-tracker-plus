@@ -313,6 +313,9 @@ const Landing = () => {
             </div>
             
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+              <Link to="/about" className="hover:text-foreground transition-colors">
+                O nas
+              </Link>
               <Link to="/contact" className="hover:text-foreground transition-colors">
                 Kontakt
               </Link>

@@ -9,6 +9,7 @@ const corsHeaders = {
 interface ContactRequest {
   name: string;
   email: string;
+  subject: string;
   message: string;
 }
 
@@ -18,7 +19,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { name, email, message }: ContactRequest = await req.json();
+    const { name, email, subject, message }: ContactRequest = await req.json();
 
     // Validate inputs
     if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 100) {
@@ -31,6 +32,13 @@ serve(async (req: Request): Promise<Response> => {
     if (!email || typeof email !== 'string' || !email.includes('@') || email.length > 255) {
       return new Response(
         JSON.stringify({ error: "Nieprawidłowy email" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0 || subject.length > 200) {
+      return new Response(
+        JSON.stringify({ error: "Nieprawidłowy temat" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -52,6 +60,7 @@ serve(async (req: Request): Promise<Response> => {
       .insert({
         name: name.trim(),
         email: email.trim().toLowerCase(),
+        subject: subject.trim(),
         message: message.trim(),
       });
 
@@ -63,7 +72,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("Contact form submitted:", { name, email });
+    console.log("Contact form submitted:", { name, email, subject });
 
     return new Response(
       JSON.stringify({ success: true, message: "Wiadomość została wysłana" }),

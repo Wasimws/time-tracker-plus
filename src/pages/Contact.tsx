@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Send, CheckCircle, Loader2, Mail, User, MessageSquare, Clock, ArrowLeft } from "lucide-react";
+import { Send, CheckCircle, Loader2, Mail, User, MessageSquare, Clock, ArrowLeft, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { z } from "zod";
 
@@ -19,6 +19,10 @@ const contactSchema = z.object({
     .trim()
     .email("Nieprawidłowy adres email")
     .max(255, "Email może mieć maksymalnie 255 znaków"),
+  subject: z.string()
+    .trim()
+    .min(1, "Temat jest wymagany")
+    .max(200, "Temat może mieć maksymalnie 200 znaków"),
   message: z.string()
     .trim()
     .min(1, "Wiadomość jest wymagana")
@@ -29,6 +33,7 @@ const Contact = () => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    subject: "",
     message: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -83,7 +88,7 @@ const Contact = () => {
       }
 
       setIsSuccess(true);
-      setFormData({ name: "", email: "", message: "" });
+      setFormData({ name: "", email: "", subject: "", message: "" });
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Wystąpił błąd podczas wysyłania");
     } finally {
@@ -212,6 +217,26 @@ const Contact = () => {
                     />
                     {errors.email && (
                       <p className="text-sm text-destructive animate-fade-in">{errors.email}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="subject" className="flex items-center gap-2 text-foreground">
+                      <FileText className="w-4 h-4 text-primary" />
+                      Temat
+                    </Label>
+                    <Input
+                      id="subject"
+                      value={formData.subject}
+                      onChange={(e) => handleChange("subject", e.target.value)}
+                      className={cn(
+                        "transition-all duration-300 focus:ring-2 focus:ring-primary/20",
+                        errors.subject && "border-destructive focus:ring-destructive/20"
+                      )}
+                      disabled={isSubmitting}
+                    />
+                    {errors.subject && (
+                      <p className="text-sm text-destructive animate-fade-in">{errors.subject}</p>
                     )}
                   </div>
 
