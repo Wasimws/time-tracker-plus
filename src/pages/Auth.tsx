@@ -42,10 +42,6 @@ interface InviteInfo {
 // Timeout for loading states (10 seconds)
 const LOADING_TIMEOUT_MS = 10000;
 
-// Retry configuration for data refresh after registration
-const REFRESH_RETRY_DELAY = 400;
-const REFRESH_MAX_RETRIES = 5;
-
 // Use forwardRef to prevent React Router warning
 const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
   const [isLoading, setIsLoading] = useState(false);
@@ -141,29 +137,18 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     }
   }, [user, organization, navigate]);
 
-  // Handle waiting state for organization with timeout
+  // Handle waiting state for organization with single timeout (no repeated retries)
   useEffect(() => {
-    if (user && !organization && !waitingForOrg) {
+    if (user && !organization && !waitingForOrg && !error) {
       setWaitingForOrg(true);
       
-      // Set a timeout to stop waiting and retry refresh
-      orgWaitTimeoutRef.current = setTimeout(async () => {
-        console.log('[AUTH] Organization wait timeout - retrying refresh...');
-        try {
-          await refreshUserData();
-          // Check ref instead of closure to get current value
-          setTimeout(() => {
-            if (!organizationRef.current) {
-              setError('Nie udało się załadować danych organizacji. Spróbuj się wylogować i zalogować ponownie.');
-              setWaitingForOrg(false);
-            }
-          }, 1000);
-        } catch (err) {
-          console.error('[AUTH] Error refreshing user data:', err);
-          setError('Wystąpił błąd podczas ładowania danych. Spróbuj ponownie.');
+      // Single timeout - if org not loaded after 8 seconds, show error
+      orgWaitTimeoutRef.current = setTimeout(() => {
+        if (!organizationRef.current && isMountedRef.current) {
+          setError('Nie udało się załadować danych organizacji. Spróbuj odświeżyć stronę lub wylogować się i zalogować ponownie.');
           setWaitingForOrg(false);
         }
-      }, 5000); // 5 second timeout
+      }, 8000);
       
       return () => {
         if (orgWaitTimeoutRef.current) {
@@ -171,7 +156,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         }
       };
     }
-  }, [user, organization, waitingForOrg, refreshUserData]);
+  }, [user, organization, waitingForOrg, error]);
 
   // Debounced organization check
   useEffect(() => {
@@ -320,9 +305,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     setError(null);
 
     try {
-      console.log('[AUTH] Starting invite signup for:', email);
-      
-      // First, register the user with Supabase Auth
+      // Register the user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -333,8 +316,6 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
           },
         },
       });
-
-      console.log('[AUTH] SignUp result:', { hasSession: !!authData.session, error: authError?.message });
 
       if (authError) {
         if (authError.message.includes('already')) {
@@ -353,9 +334,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         return;
       }
 
-      console.log('[AUTH] Session obtained, assigning to organization with invite token:', inviteToken);
-
-      // Now assign the user to organization using the invitation
+      // Assign the user to organization using the invitation
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -366,34 +345,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         },
       });
 
-      console.log('[AUTH] register-with-org result:', { data, error: error?.message });
-
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with limited retries
-      console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for DB to propagate, then refresh
+      await new Promise(resolve => setTimeout(resolve, 600));
       
-      // Refresh user data with early-exit when org is loaded
+      // Single refresh attempt - organization should be assigned by edge function
       let orgLoaded = false;
-      for (let i = 0; i < REFRESH_MAX_RETRIES && !orgLoaded; i++) {
-        if (!isMountedRef.current) break;
-        
-        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}/${REFRESH_MAX_RETRIES}`);
+      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
         const success = await refreshUserData();
-        
-        // Small delay before checking
-        await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
-        
-        // Check if organization is now available
         if (organizationRef.current) {
           orgLoaded = true;
-          console.log('[AUTH] Organization loaded successfully!');
-        } else if (!success && i >= 2) {
-          // If refresh failed multiple times, stop retrying
-          console.log('[AUTH] Multiple refresh failures, stopping retries');
-          break;
+        } else if (i < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
       
@@ -402,7 +367,6 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (orgLoaded) {
         navigate('/dashboard');
       }
-      // If org not loaded, useEffect will handle navigation when ready
     } catch (err: unknown) {
       console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
@@ -438,9 +402,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     setError(null);
 
     try {
-      console.log('[AUTH] Starting signup step 2 for:', signupData.email);
-      
-      // First, register the user with Supabase Auth
+      // Register the user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupData.email,
         password: signupData.password,
@@ -451,8 +413,6 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
           },
         },
       });
-
-      console.log('[AUTH] SignUp result:', { hasSession: !!authData.session, error: authError?.message });
 
       if (authError) {
         if (authError.message.includes('already')) {
@@ -471,10 +431,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         return;
       }
 
-      console.log('[AUTH] Session obtained, assigning to organization:', orgCode);
-
-      // Now assign the user to an organization using the edge function
-      // IMPORTANT: Pass the access token explicitly since the global client might not have the session yet
+      // Assign the user to an organization using the edge function
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -486,34 +443,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         },
       });
 
-      console.log('[AUTH] register-with-org result:', { data, error: error?.message });
-
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with limited retries
-      console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for DB to propagate, then refresh
+      await new Promise(resolve => setTimeout(resolve, 600));
       
-      // Refresh user data with early-exit when org is loaded
+      // Simple refresh - organization should be assigned by edge function
       let orgLoaded = false;
-      for (let i = 0; i < REFRESH_MAX_RETRIES && !orgLoaded; i++) {
-        if (!isMountedRef.current) break;
-        
-        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}/${REFRESH_MAX_RETRIES}`);
-        const success = await refreshUserData();
-        
-        // Small delay before checking
-        await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
-        
-        // Check if organization is now available
+      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
+        await refreshUserData();
         if (organizationRef.current) {
           orgLoaded = true;
-          console.log('[AUTH] Organization loaded successfully!');
-        } else if (!success && i >= 2) {
-          // If refresh failed multiple times, stop retrying
-          console.log('[AUTH] Multiple refresh failures, stopping retries');
-          break;
+        } else if (i < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
       
@@ -522,9 +465,8 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (orgLoaded) {
         navigate('/dashboard');
       }
-      // If org not loaded, useEffect will handle navigation when ready
     } catch (err: unknown) {
-      console.error('[AUTH] Signup step 2 error:', err);
+      console.error('[AUTH] Signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
       setLoadingWithTimeout(false);
