@@ -129,34 +129,84 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     organizationRef.current = organization;
   }, [organization]);
 
-  // Redirect when user is logged in AND has organization
+  // Handle user logged in - try to assign pending org if needed
   useEffect(() => {
-    if (user && organization) {
+    if (!user) return;
+    
+    // If user already has organization, navigate to dashboard
+    if (organization) {
       setWaitingForOrg(false);
       navigate('/dashboard');
+      return;
     }
-  }, [user, organization, navigate]);
 
-  // Handle waiting state for organization with single timeout (no repeated retries)
-  useEffect(() => {
-    if (user && !organization && !waitingForOrg && !error) {
-      setWaitingForOrg(true);
-      
-      // Single timeout - if org not loaded after 8 seconds, show error
-      orgWaitTimeoutRef.current = setTimeout(() => {
-        if (!organizationRef.current && isMountedRef.current) {
-          setError('Nie udało się załadować danych organizacji. Spróbuj odświeżyć stronę lub wylogować się i zalogować ponownie.');
-          setWaitingForOrg(false);
-        }
-      }, 8000);
-      
-      return () => {
-        if (orgWaitTimeoutRef.current) {
-          clearTimeout(orgWaitTimeoutRef.current);
-        }
-      };
+    // Check if user has pending org assignment in metadata
+    const metadata = user.user_metadata || {};
+    const pendingOrgCode = metadata.pending_org_code;
+    const pendingOrgName = metadata.pending_org_name;
+    const pendingInviteToken = metadata.invite_token;
+    
+    if (!pendingOrgCode && !pendingInviteToken) {
+      // No pending assignment and no org - show error after timeout
+      if (!waitingForOrg && !error) {
+        setWaitingForOrg(true);
+        orgWaitTimeoutRef.current = setTimeout(() => {
+          if (!organizationRef.current && isMountedRef.current) {
+            setError('Brak przypisanej organizacji. Skontaktuj się z administratorem.');
+            setWaitingForOrg(false);
+          }
+        }, 5000);
+      }
+      return;
     }
-  }, [user, organization, waitingForOrg, error]);
+
+    // Try to assign organization
+    const assignOrg = async () => {
+      setWaitingForOrg(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const { data, error: fnError } = await supabase.functions.invoke('register-with-org', {
+          body: {
+            action: 'assign_org',
+            organizationCode: pendingOrgCode,
+            organizationName: pendingOrgName,
+            inviteToken: pendingInviteToken,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (fnError) throw fnError;
+        if (data?.error) throw new Error(data.error);
+
+        // Clear pending data from metadata
+        await supabase.auth.updateUser({
+          data: {
+            pending_org_code: null,
+            pending_org_name: null,
+            invite_token: null,
+          },
+        });
+
+        await refreshUserData();
+      } catch (err) {
+        console.error('Error assigning org:', err);
+        setError('Nie udało się przypisać organizacji. Spróbuj ponownie.');
+        setWaitingForOrg(false);
+      }
+    };
+
+    assignOrg();
+    
+    return () => {
+      if (orgWaitTimeoutRef.current) {
+        clearTimeout(orgWaitTimeoutRef.current);
+      }
+    };
+  }, [user, organization, navigate, refreshUserData, waitingForOrg, error]);
 
   // Debounced organization check
   useEffect(() => {
@@ -305,14 +355,15 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     setError(null);
 
     try {
-      // Register the user with Supabase Auth
+      // Register the user with Supabase Auth - include invite token in metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth`,
           data: {
             full_name: fullName,
+            invite_token: inviteToken,
           },
         },
       });
@@ -329,7 +380,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
 
       if (!authData.session) {
         // Email confirmation required
-        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
+        setSuccessMessage('Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
         setLoadingWithTimeout(false);
         return;
       }
@@ -348,27 +399,12 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Single refresh attempt - organization should be assigned by edge function
-      let orgLoaded = false;
-      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
-        const success = await refreshUserData();
-        if (organizationRef.current) {
-          orgLoaded = true;
-        } else if (i < 2) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
+      // Refresh and navigate
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshUserData();
       setLoadingWithTimeout(false);
-      
-      if (orgLoaded) {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     } catch (err: unknown) {
-      console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
       setLoadingWithTimeout(false);
@@ -378,16 +414,13 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
   const handleSignUpStep2 = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Prevent double-click
     if (isLoading) return;
     
-    // Block if org exists (must use invitation)
     if (orgCheckResult?.exists) {
       setError('Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora');
       return;
     }
 
-    // Block if still checking org
     if (isCheckingOrg) {
       setError('Poczekaj na sprawdzenie kodu firmy');
       return;
@@ -402,14 +435,16 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     setError(null);
 
     try {
-      // Register the user with Supabase Auth
+      // Register user - include org data in metadata for later assignment
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupData.email,
         password: signupData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth`,
           data: {
             full_name: signupData.fullName,
+            pending_org_code: orgCode,
+            pending_org_name: orgName || orgCode,
           },
         },
       });
@@ -425,13 +460,13 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       }
 
       if (!authData.session) {
-        // Email confirmation required - save org data for later assignment
-        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
+        // Email confirmation required - org data saved in metadata
+        setSuccessMessage('Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
         setLoadingWithTimeout(false);
         return;
       }
 
-      // Assign the user to an organization using the edge function
+      // Assign user to organization
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -446,27 +481,12 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Simple refresh - organization should be assigned by edge function
-      let orgLoaded = false;
-      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
-        await refreshUserData();
-        if (organizationRef.current) {
-          orgLoaded = true;
-        } else if (i < 2) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
+      // Refresh and navigate
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshUserData();
       setLoadingWithTimeout(false);
-      
-      if (orgLoaded) {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     } catch (err: unknown) {
-      console.error('[AUTH] Signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
       setLoadingWithTimeout(false);
