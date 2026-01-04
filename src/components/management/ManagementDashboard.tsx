@@ -13,6 +13,7 @@ import { UserManagement } from './UserManagement';
 import { ActivityLog } from './ActivityLog';
 import { SubscriptionManagement } from './SubscriptionManagement';
 import { InvitationManagement } from './InvitationManagement';
+import { ViewModeToggle } from './ViewModeToggle';
 
 interface EmployeeStats {
   userId: string;
@@ -122,7 +123,10 @@ export function ManagementDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Panel zarządu</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-2xl font-bold">Panel zarządu</h1>
+        <ViewModeToggle />
+      </div>
 
       <Tabs defaultValue="stats" className="w-full">
         <TabsList className="grid w-full grid-cols-5 max-w-3xl">

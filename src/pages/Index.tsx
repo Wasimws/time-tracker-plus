@@ -5,8 +5,19 @@ import { Layout } from '@/components/Layout';
 import { SubscriptionGate } from '@/components/SubscriptionGate';
 import { EmployeeDashboard } from '@/components/employee/EmployeeDashboard';
 import { ManagementDashboard } from '@/components/management/ManagementDashboard';
+import { ViewModeProvider, useViewMode } from '@/hooks/useViewMode';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+function DashboardContent() {
+  const { role } = useAuth();
+  const { isEmployeeViewMode } = useViewMode();
+
+  // If management user is in employee view mode, show employee dashboard
+  const showEmployeeDashboard = role === 'employee' || (role === 'management' && isEmployeeViewMode);
+
+  return showEmployeeDashboard ? <EmployeeDashboard /> : <ManagementDashboard />;
+}
 
 export default function Index() {
   const { user, loading, role, refreshUserData } = useAuth();
@@ -20,9 +31,6 @@ export default function Index() {
     }
   }, [user, loading, navigate]);
 
-  // Redirect to landing if user is logged in but accessed via old route
-  // This ensures the dashboard is always at /dashboard
-
   // Handle payment callback
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -31,11 +39,9 @@ export default function Index() {
         title: 'Płatność zakończona',
         description: 'Dziękujemy za zakup subskrypcji! Status zostanie zaktualizowany w ciągu kilku sekund.',
       });
-      // Refresh user data to get updated subscription status
       setTimeout(() => {
         refreshUserData();
       }, 2000);
-      // Clear the URL params
       setSearchParams({});
     } else if (payment === 'canceled') {
       toast({
@@ -59,11 +65,18 @@ export default function Index() {
     return null;
   }
 
-  return (
+  // Only wrap with ViewModeProvider for management users
+  const content = (
     <Layout>
       <SubscriptionGate allowViewOnly>
-        {role === 'management' ? <ManagementDashboard /> : <EmployeeDashboard />}
+        <DashboardContent />
       </SubscriptionGate>
     </Layout>
+  );
+
+  return role === 'management' ? (
+    <ViewModeProvider>{content}</ViewModeProvider>
+  ) : (
+    content
   );
 }
