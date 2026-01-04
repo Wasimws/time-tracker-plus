@@ -183,18 +183,32 @@ export default function Auth() {
     }
 
     const formData = new FormData(e.currentTarget);
-    const emailRaw = formData.get('email');
     const passwordRaw = formData.get('password');
     const fullNameRaw = formData.get('fullName');
 
     // Defensive reading - handle null/undefined values
-    const email = typeof emailRaw === 'string' ? emailRaw.trim() : '';
     const password = typeof passwordRaw === 'string' ? passwordRaw : '';
     const fullName = typeof fullNameRaw === 'string' ? fullNameRaw.trim() : '';
 
-    // Validate inputs
-    if (!email || !fullName) {
-      setError('Wszystkie pola są wymagane');
+    // For email: if we have a valid invitation, use the email from invitation (since field is disabled/readonly)
+    // Otherwise, get it from the form
+    let email = '';
+    if (inviteInfo?.valid && inviteInfo.invitation?.email) {
+      // Email comes from invitation - field is disabled so FormData may not include it
+      email = inviteInfo.invitation.email;
+    } else {
+      const emailRaw = formData.get('email');
+      email = typeof emailRaw === 'string' ? emailRaw.trim() : '';
+    }
+
+    // Validate required fields
+    if (!fullName) {
+      setError('Imię i nazwisko jest wymagane');
+      return;
+    }
+
+    if (!email) {
+      setError('Email jest wymagany');
       return;
     }
 
