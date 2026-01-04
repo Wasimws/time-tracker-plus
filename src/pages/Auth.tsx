@@ -9,7 +9,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Clock, Loader2, Building2, CheckCircle2, AlertCircle, Eye, EyeOff, Home, ArrowLeft } from 'lucide-react';
 import { APP_NAME, APP_DESCRIPTION, TRIAL_DURATION_DAYS } from '@/lib/constants';
 import { validatePassword, getPasswordStrength } from '@/lib/password-validation';
@@ -39,9 +38,6 @@ interface InviteInfo {
   error?: string;
 }
 
-// Timeout for loading states (10 seconds)
-const LOADING_TIMEOUT_MS = 10000;
-
 // Use forwardRef to prevent React Router warning
 const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
   const [isLoading, setIsLoading] = useState(false);
@@ -59,46 +55,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
   const [gdprConsent, setGdprConsent] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
-  const [waitingForOrg, setWaitingForOrg] = useState(false);
+  const [pendingOrgAssignment, setPendingOrgAssignment] = useState(false);
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
-  const { signIn, user, organization, refreshUserData } = useAuth();
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const orgWaitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const organizationRef = useRef(organization);
+  const { signIn, user, organization, refreshUserData, loading: authLoading } = useAuth();
   const isMountedRef = useRef(true);
 
-  // Cleanup timeouts and mounted ref on unmount
+  // Cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-      if (orgWaitTimeoutRef.current) {
-        clearTimeout(orgWaitTimeoutRef.current);
-      }
     };
   }, []);
-
-  // Set loading with timeout protection
-  const setLoadingWithTimeout = (loading: boolean) => {
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-      loadingTimeoutRef.current = null;
-    }
-    
-    setIsLoading(loading);
-    
-    if (loading) {
-      loadingTimeoutRef.current = setTimeout(() => {
-        setIsLoading(false);
-        setError('Przekroczono czas oczekiwania. Spróbuj ponownie.');
-      }, LOADING_TIMEOUT_MS);
-    }
-  };
 
   // Check invitation token on load
   useEffect(() => {
@@ -124,39 +94,16 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     }
   };
 
-  // Keep organizationRef in sync
-  useEffect(() => {
-    organizationRef.current = organization;
-  }, [organization]);
-
-  // Redirect when user is logged in AND has organization
+  // Simple redirect: user logged in AND has organization -> go to dashboard
   useEffect(() => {
     if (user && organization) {
-      setWaitingForOrg(false);
       navigate('/dashboard');
     }
   }, [user, organization, navigate]);
 
-  // Handle waiting state for organization with single timeout (no repeated retries)
-  useEffect(() => {
-    if (user && !organization && !waitingForOrg && !error) {
-      setWaitingForOrg(true);
-      
-      // Single timeout - if org not loaded after 8 seconds, show error
-      orgWaitTimeoutRef.current = setTimeout(() => {
-        if (!organizationRef.current && isMountedRef.current) {
-          setError('Nie udało się załadować danych organizacji. Spróbuj odświeżyć stronę lub wylogować się i zalogować ponownie.');
-          setWaitingForOrg(false);
-        }
-      }, 8000);
-      
-      return () => {
-        if (orgWaitTimeoutRef.current) {
-          clearTimeout(orgWaitTimeoutRef.current);
-        }
-      };
-    }
-  }, [user, organization, waitingForOrg, error]);
+  // User logged in but no organization - show org assignment screen
+  // This is NOT an error state - it's expected for users who verified email but need to complete org setup
+  const showOrgAssignmentScreen = user && !organization && !authLoading && !pendingOrgAssignment;
 
   // Debounced organization check
   useEffect(() => {
@@ -187,7 +134,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoadingWithTimeout(true);
+    setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
 
@@ -200,19 +147,19 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     if (error) {
       if (error.message.includes('Invalid login credentials')) {
         setError('Nieprawidłowy email lub hasło');
+      } else if (error.message.includes('Email not confirmed')) {
+        setError('Email nie został potwierdzony. Sprawdź swoją skrzynkę email i kliknij link aktywacyjny.');
       } else {
         setError(error.message);
       }
-      setLoadingWithTimeout(false);
-    } else {
-      // Login successful - turn off loading, useEffect will handle org waiting and navigation
-      setLoadingWithTimeout(false);
     }
+    // Navigation handled by useEffect when user & organization are loaded
+    setIsLoading(false);
   };
 
   const handleForgotPassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoadingWithTimeout(true);
+    setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
 
@@ -230,7 +177,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     } catch (err) {
       setError('Wystąpił błąd podczas wysyłania emaila');
     } finally {
-      setLoadingWithTimeout(false);
+      setIsLoading(false);
     }
   };
 
@@ -253,22 +200,17 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     const passwordRaw = formData.get('password');
     const fullNameRaw = formData.get('fullName');
 
-    // Defensive reading - handle null/undefined values
     const password = typeof passwordRaw === 'string' ? passwordRaw : '';
     const fullName = typeof fullNameRaw === 'string' ? fullNameRaw.trim() : '';
 
-    // For email: if we have a valid invitation, use the email from invitation (since field is disabled/readonly)
-    // Otherwise, get it from the form
     let email = '';
     if (inviteInfo?.valid && inviteInfo.invitation?.email) {
-      // Email comes from invitation - field is disabled so FormData may not include it
       email = inviteInfo.invitation.email;
     } else {
       const emailRaw = formData.get('email');
       email = typeof emailRaw === 'string' ? emailRaw.trim() : '';
     }
 
-    // Validate required fields
     if (!fullName) {
       setError('Imię i nazwisko jest wymagane');
       return;
@@ -292,7 +234,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
 
     setSignupData({ email, password, fullName });
     
-    // If we have a valid invitation, skip organization step
+    // If we have a valid invitation, skip organization step and go directly to signup
     if (inviteInfo?.valid) {
       handleInviteSignup(email, password, fullName);
     } else {
@@ -300,19 +242,21 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     }
   };
 
+  // Handle signup with invitation - creates account and assigns to org in one flow
   const handleInviteSignup = async (email: string, password: string, fullName: string) => {
-    setLoadingWithTimeout(true);
+    setIsLoading(true);
     setError(null);
 
     try {
-      // Register the user with Supabase Auth
+      // Step 1: Create user account with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth?invite=${inviteToken}`,
           data: {
             full_name: fullName,
+            pending_invite_token: inviteToken, // Store for after email verification
           },
         },
       });
@@ -323,18 +267,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         } else {
           setError(authError.message);
         }
-        setLoadingWithTimeout(false);
+        setIsLoading(false);
         return;
       }
 
+      // If no session, email verification is required
       if (!authData.session) {
-        // Email confirmation required
-        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
-        setLoadingWithTimeout(false);
+        setSuccessMessage('Konto zostało utworzone! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację i dołączyć do firmy.');
+        setIsLoading(false);
         return;
       }
 
-      // Assign the user to organization using the invitation
+      // User is auto-confirmed (dev mode) - assign to organization immediately
+      setPendingOrgAssignment(true);
+      
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -348,46 +294,31 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Single refresh attempt - organization should be assigned by edge function
-      let orgLoaded = false;
-      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
-        const success = await refreshUserData();
-        if (organizationRef.current) {
-          orgLoaded = true;
-        } else if (i < 2) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
-      setLoadingWithTimeout(false);
-      
-      if (orgLoaded) {
-        navigate('/dashboard');
-      }
+      // Refresh user data and navigate
+      await refreshUserData();
+      setPendingOrgAssignment(false);
+      navigate('/dashboard');
     } catch (err: unknown) {
       console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
-      setLoadingWithTimeout(false);
+      setPendingOrgAssignment(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Handle regular signup (new organization creation)
   const handleSignUpStep2 = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Prevent double-click
     if (isLoading) return;
     
-    // Block if org exists (must use invitation)
     if (orgCheckResult?.exists) {
       setError('Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora');
       return;
     }
 
-    // Block if still checking org
     if (isCheckingOrg) {
       setError('Poczekaj na sprawdzenie kodu firmy');
       return;
@@ -398,18 +329,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       return;
     }
 
-    setLoadingWithTimeout(true);
+    setIsLoading(true);
     setError(null);
 
     try {
-      // Register the user with Supabase Auth
+      // Step 1: Create user account - DON'T assign org yet, wait for email verification
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupData.email,
         password: signupData.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth`,
           data: {
             full_name: signupData.fullName,
+            pending_org_code: orgCode, // Store for after email verification
+            pending_org_name: orgName || orgCode,
           },
         },
       });
@@ -420,18 +353,20 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         } else {
           setError(authError.message);
         }
-        setLoadingWithTimeout(false);
+        setIsLoading(false);
         return;
       }
 
+      // If no session, email verification is required
       if (!authData.session) {
-        // Email confirmation required - save org data for later assignment
-        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
-        setLoadingWithTimeout(false);
+        setSuccessMessage('Konto zostało utworzone! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
+        setIsLoading(false);
         return;
       }
 
-      // Assign the user to an organization using the edge function
+      // User is auto-confirmed (dev mode) - assign to organization immediately
+      setPendingOrgAssignment(true);
+      
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -446,30 +381,78 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      // Simple refresh - organization should be assigned by edge function
-      let orgLoaded = false;
-      for (let i = 0; i < 3 && !orgLoaded && isMountedRef.current; i++) {
-        await refreshUserData();
-        if (organizationRef.current) {
-          orgLoaded = true;
-        } else if (i < 2) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-      
-      setLoadingWithTimeout(false);
-      
-      if (orgLoaded) {
-        navigate('/dashboard');
-      }
+      // Refresh user data and navigate
+      await refreshUserData();
+      setPendingOrgAssignment(false);
+      navigate('/dashboard');
     } catch (err: unknown) {
       console.error('[AUTH] Signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
-      setLoadingWithTimeout(false);
+      setPendingOrgAssignment(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle organization assignment for verified users who don't have one yet
+  const handleOrgAssignment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    if (isLoading || isCheckingOrg) return;
+    
+    if (orgCheckResult?.exists) {
+      setError('Aby dołączyć do istniejącej firmy, musisz otrzymać zaproszenie email od jej administratora');
+      return;
+    }
+
+    if (orgCode.length < 3) {
+      setError('Kod firmy musi mieć co najmniej 3 znaki');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setPendingOrgAssignment(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        setError('Sesja wygasła. Zaloguj się ponownie.');
+        setIsLoading(false);
+        setPendingOrgAssignment(false);
+        return;
+      }
+
+      // Check for pending invite token in user metadata
+      const pendingInviteToken = user?.user_metadata?.pending_invite_token;
+      
+      const { data, error } = await supabase.functions.invoke('register-with-org', {
+        body: {
+          action: 'assign_org',
+          organizationCode: orgCode,
+          organizationName: orgName || orgCode,
+          ...(pendingInviteToken && { inviteToken: pendingInviteToken }),
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Refresh and navigate
+      await refreshUserData();
+      navigate('/dashboard');
+    } catch (err: unknown) {
+      console.error('[AUTH] Org assignment error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas przypisywania do firmy';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setPendingOrgAssignment(false);
     }
   };
 
@@ -481,17 +464,163 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     setError(null);
   };
 
-  // Show loading while checking auth state (with timeout protection)
-  if (user && !organization && waitingForOrg && !error) {
+  const handleRetry = async () => {
+    setError(null);
+    await refreshUserData();
+  };
+
+  const handleLogoutAndRetry = async () => {
+    await supabase.auth.signOut();
+    setError(null);
+  };
+
+  // Show loading only during auth check, not during org assignment
+  if (authLoading && !user) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Ładowanie danych organizacji...</p>
-        <p className="text-xs text-muted-foreground">To może potrwać kilka sekund...</p>
+        <p className="text-sm text-muted-foreground">Sprawdzanie sesji...</p>
       </div>
     );
   }
 
+  // Show organization assignment screen for verified users without org
+  if (showOrgAssignmentScreen) {
+    const pendingOrgCode = user?.user_metadata?.pending_org_code;
+    const pendingOrgName = user?.user_metadata?.pending_org_name;
+    const pendingInviteToken = user?.user_metadata?.pending_invite_token;
+
+    // If user has pending org data from signup, auto-fill and process
+    if (pendingOrgCode && !orgCode) {
+      setOrgCode(pendingOrgCode);
+      if (pendingOrgName) setOrgName(pendingOrgName);
+    }
+
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/10" />
+        </div>
+
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Clock className="h-8 w-8 text-primary" />
+              <span className="text-2xl font-bold text-primary">{APP_NAME}</span>
+            </div>
+            <CardTitle>Dokończ konfigurację</CardTitle>
+            <CardDescription>
+              {pendingInviteToken 
+                ? 'Dołącz do firmy, do której zostałeś zaproszony'
+                : 'Utwórz lub dołącz do firmy, aby korzystać z aplikacji'
+              }
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription className="flex flex-col gap-2">
+                  {error}
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" variant="outline" onClick={handleRetry}>
+                      Spróbuj ponownie
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={handleLogoutAndRetry}>
+                      Wyloguj się
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <form onSubmit={handleOrgAssignment} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="org-code">Kod firmy</Label>
+                <div className="relative">
+                  <Input
+                    id="org-code"
+                    type="text"
+                    placeholder="np. moja-firma"
+                    value={orgCode}
+                    onChange={(e) => setOrgCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    required
+                    disabled={isLoading}
+                    className="pr-10"
+                  />
+                  {isCheckingOrg && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+              </div>
+
+              {orgCheckResult && (
+                <div className={`p-3 rounded-lg border ${orgCheckResult.exists ? 'bg-destructive/10 border-destructive/20' : 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800'}`}>
+                  {orgCheckResult.exists ? (
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                      <div>
+                        <p className="font-medium text-destructive">Firma już istnieje</p>
+                        <p className="text-sm text-destructive/80">
+                          Poproś administratora o zaproszenie email
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-green-900 dark:text-green-100">Utworzysz nową firmę</p>
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          Otrzymasz rolę Zarządu + {TRIAL_DURATION_DAYS} dni triala
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {orgCheckResult && !orgCheckResult.exists && (
+                <div className="space-y-2">
+                  <Label htmlFor="org-name">Nazwa firmy</Label>
+                  <Input
+                    id="org-name"
+                    type="text"
+                    placeholder="np. Moja Firma Sp. z o.o."
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={isLoading || isCheckingOrg || orgCode.length < 3 || orgCheckResult?.exists === true}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Przypisywanie...
+                  </>
+                ) : (
+                  'Kontynuuj'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+          <CardFooter className="flex justify-center">
+            <Button variant="ghost" onClick={handleLogoutAndRetry}>
+              Wyloguj się
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+  // User with organization - redirect will happen via useEffect
   if (user && organization) {
     return null;
   }
@@ -509,16 +638,11 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated background */}
       <div className="absolute inset-0 -z-10">
-        {/* Gradient base */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/10" />
-        
-        {/* Animated blobs */}
         <div className="absolute top-0 -left-4 w-72 h-72 bg-primary/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
         <div className="absolute top-0 -right-4 w-72 h-72 bg-accent/30 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
         <div className="absolute -bottom-8 left-20 w-72 h-72 bg-primary/15 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000" />
         <div className="absolute bottom-20 right-20 w-64 h-64 bg-accent/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-3000" />
-        
-        {/* Grid pattern overlay */}
         <div 
           className="absolute inset-0 opacity-[0.015]" 
           style={{
@@ -528,11 +652,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         />
       </div>
       
-      {/* Home button */}
-      <Link 
-        to="/" 
-        className="absolute top-4 left-4 z-10"
-      >
+      <Link to="/" className="absolute top-4 left-4 z-10">
         <Button variant="outline" className="gap-2">
           <Home className="h-4 w-4" />
           <span className="hidden sm:inline">Strona główna</span>
@@ -768,7 +888,6 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
                     )}
                   </div>
                   
-                  {/* GDPR Consent Checkbox */}
                   <div className="flex items-start space-x-2">
                     <Checkbox
                       id="gdpr-consent"
@@ -889,23 +1008,14 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
                     >
                       Wstecz
                     </Button>
-                    <Button 
-                      type="submit" 
-                      className="flex-1" 
-                      disabled={isStep2ButtonDisabled}
-                    >
+                    <Button type="submit" className="flex-1" disabled={isStep2ButtonDisabled}>
                       {isLoading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Rejestracja...
-                        </>
-                      ) : isCheckingOrg ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sprawdzanie...
+                          Tworzenie konta...
                         </>
                       ) : (
-                        'Utwórz firmę i zarejestruj'
+                        'Utwórz konto'
                       )}
                     </Button>
                   </div>
@@ -914,18 +1024,10 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
             </TabsContent>
           </Tabs>
         </CardContent>
-        <CardFooter className="text-center text-sm text-muted-foreground flex-col gap-3">
-          <p>{TRIAL_DURATION_DAYS} dni bezpłatnego okresu próbnego</p>
-          <div className="flex flex-wrap justify-center gap-2 text-xs">
-            <Link to="/privacy-policy" className="hover:text-primary hover:underline">
-              Polityka Prywatności
-            </Link>
-            <span>•</span>
-            <Link to="/cookie-policy" className="hover:text-primary hover:underline">
-              Polityka Cookies
-            </Link>
-          </div>
-          <Badge variant="secondary">Multi-tenant SaaS</Badge>
+        <CardFooter className="flex flex-col gap-2">
+          <p className="text-xs text-center text-muted-foreground">
+            Rejestrując się, akceptujesz nasz regulamin i politykę prywatności.
+          </p>
         </CardFooter>
       </Card>
     </div>
