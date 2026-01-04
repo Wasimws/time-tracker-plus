@@ -372,6 +372,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_authenticated: { Args: never; Returns: boolean }
       is_org_creator: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean

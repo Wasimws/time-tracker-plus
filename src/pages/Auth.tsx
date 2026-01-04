@@ -42,9 +42,9 @@ interface InviteInfo {
 // Timeout for loading states (10 seconds)
 const LOADING_TIMEOUT_MS = 10000;
 
-// Retry configuration for data refresh after registration - faster retries
-const REFRESH_RETRY_DELAY = 300;
-const REFRESH_MAX_RETRIES = 8;
+// Retry configuration for data refresh after registration
+const REFRESH_RETRY_DELAY = 400;
+const REFRESH_MAX_RETRIES = 5;
 
 // Use forwardRef to prevent React Router warning
 const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
@@ -347,7 +347,8 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       }
 
       if (!authData.session) {
-        setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
+        // Email confirmation required
+        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
         setLoadingWithTimeout(false);
         return;
       }
@@ -370,30 +371,38 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with smart retry
+      // Wait for DB to propagate, then refresh with limited retries
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Refresh user data with smart early-exit when org is loaded
-      for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+      // Refresh user data with early-exit when org is loaded
+      let orgLoaded = false;
+      for (let i = 0; i < REFRESH_MAX_RETRIES && !orgLoaded; i++) {
         if (!isMountedRef.current) break;
         
-        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
-        await refreshUserData();
+        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}/${REFRESH_MAX_RETRIES}`);
+        const success = await refreshUserData();
         
-        // Check if organization is now available (via ref to get current value)
+        // Small delay before checking
         await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
         
+        // Check if organization is now available
         if (organizationRef.current) {
-          console.log('[AUTH] Organization loaded, navigating to dashboard...');
-          setLoadingWithTimeout(false);
-          navigate('/dashboard');
-          return;
+          orgLoaded = true;
+          console.log('[AUTH] Organization loaded successfully!');
+        } else if (!success && i >= 2) {
+          // If refresh failed multiple times, stop retrying
+          console.log('[AUTH] Multiple refresh failures, stopping retries');
+          break;
         }
       }
       
-      // Clear loading - useEffect will handle navigation when user+org are ready
       setLoadingWithTimeout(false);
+      
+      if (orgLoaded) {
+        navigate('/dashboard');
+      }
+      // If org not loaded, useEffect will handle navigation when ready
     } catch (err: unknown) {
       console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
@@ -456,7 +465,8 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       }
 
       if (!authData.session) {
-        setError('Rejestracja wymaga potwierdzenia email. Sprawdź swoją skrzynkę.');
+        // Email confirmation required - save org data for later assignment
+        setSuccessMessage('Rejestracja zakończona! Sprawdź swoją skrzynkę email i kliknij link aktywacyjny, aby dokończyć rejestrację.');
         setLoadingWithTimeout(false);
         return;
       }
@@ -481,30 +491,38 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with smart retry
+      // Wait for DB to propagate, then refresh with limited retries
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Refresh user data with smart early-exit when org is loaded
-      for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+      // Refresh user data with early-exit when org is loaded
+      let orgLoaded = false;
+      for (let i = 0; i < REFRESH_MAX_RETRIES && !orgLoaded; i++) {
         if (!isMountedRef.current) break;
         
-        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
-        await refreshUserData();
+        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}/${REFRESH_MAX_RETRIES}`);
+        const success = await refreshUserData();
         
-        // Check if organization is now available (via ref to get current value)
+        // Small delay before checking
         await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
         
+        // Check if organization is now available
         if (organizationRef.current) {
-          console.log('[AUTH] Organization loaded, navigating to dashboard...');
-          setLoadingWithTimeout(false);
-          navigate('/dashboard');
-          return;
+          orgLoaded = true;
+          console.log('[AUTH] Organization loaded successfully!');
+        } else if (!success && i >= 2) {
+          // If refresh failed multiple times, stop retrying
+          console.log('[AUTH] Multiple refresh failures, stopping retries');
+          break;
         }
       }
       
-      // Clear loading - useEffect will handle navigation when user+org are ready
       setLoadingWithTimeout(false);
+      
+      if (orgLoaded) {
+        navigate('/dashboard');
+      }
+      // If org not loaded, useEffect will handle navigation when ready
     } catch (err: unknown) {
       console.error('[AUTH] Signup step 2 error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
