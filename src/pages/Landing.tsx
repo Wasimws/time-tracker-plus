@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ScrollReveal } from "@/components/landing/ScrollReveal";
 import { SupportBot } from "@/components/landing/SupportBot";
+import { ContactSection } from "@/components/landing/ContactSection";
 import { 
   Users, 
   Mail, 
@@ -300,6 +301,9 @@ const Landing = () => {
           </ScrollReveal>
         </div>
       </section>
+
+      {/* Contact Section */}
+      <ContactSection />
 
       {/* Footer */}
       <footer className="py-12 px-4 border-t border-border">
