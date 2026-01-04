@@ -94,27 +94,7 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
 
   // Full access - render children directly
   if (guard.access === 'full') {
-    return (
-      <>
-        {/* Show trial warning banner if in trial - only for employees, management has it in Subscription tab */}
-        {guard.isTrialActive && role !== 'management' && (
-          <div className="mb-4 p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
-            <Clock className="h-5 w-5 text-warning" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">
-                Okres próbny: {guard.trialDaysRemaining} {guard.trialDaysRemaining === 1 ? 'dzień' : 'dni'} pozostało
-              </p>
-              {guard.trialEndDate && (
-                <p className="text-xs text-muted-foreground">
-                  Wygasa: {format(guard.trialEndDate, 'd MMMM yyyy, HH:mm', { locale: pl })}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-        {children}
-      </>
-    );
+    return <>{children}</>;
   }
 
   // View-only mode with banner (trial expired but allowing view)
