@@ -81,12 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUserData = useCallback(async (userId: string, retryCount = 0): Promise<boolean> => {
-    const MAX_RETRIES = 5;
-    const RETRY_DELAY = 500;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 400;
 
     try {
-      console.log(`[AUTH] fetchUserData attempt ${retryCount + 1} for user ${userId}`);
-      
       // Fetch profile with organization
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -139,7 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .maybeSingle();
 
           if (subData) {
-            // Subscription active if status is 'active' OR organization trial is still running
             const hasStripe = subData.status === 'active';
             const isActive = hasStripe || isTrialActive;
             
@@ -150,7 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               hasStripeSubscription: hasStripe,
             });
           } else {
-            // No subscription record - check if trial is active
             setSubscription({
               status: isTrialActive ? 'trial' : 'inactive',
               trialEndsAt: trialEndAt,
@@ -163,8 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null);
         }
       } else {
-        // User has no organization assigned yet - might need retry after registration
-        console.log(`[AUTH] User ${userId} has no organization yet`);
+        // User has no organization - this is expected for new users before assignment
         setOrganization(null);
         setSubscription(null);
       }
@@ -188,18 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setLoading(false);
-      return true;
+      return !!profile?.organization_id; // Return true only if org is loaded
     } catch (error) {
       console.error('[AUTH] Error fetching user data:', error);
       
-      // Retry logic for transient errors
+      // Retry logic for transient errors only
       if (retryCount < MAX_RETRIES) {
-        console.log(`[AUTH] Retrying in ${RETRY_DELAY}ms...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
         return fetchUserData(userId, retryCount + 1);
       }
       
-      // After all retries failed, still turn off loading
       setLoading(false);
       return false;
     }
