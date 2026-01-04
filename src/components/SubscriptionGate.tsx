@@ -96,8 +96,8 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
   if (guard.access === 'full') {
     return (
       <>
-        {/* Show trial warning banner if in trial */}
-        {guard.isTrialActive && (
+        {/* Show trial warning banner if in trial - only for employees, management has it in Subscription tab */}
+        {guard.isTrialActive && role !== 'management' && (
           <div className="mb-4 p-3 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
             <Clock className="h-5 w-5 text-warning" />
             <div className="flex-1">
@@ -110,11 +110,6 @@ export function SubscriptionGate({ children, allowViewOnly = false }: Subscripti
                 </p>
               )}
             </div>
-            {role === 'management' && (
-              <Button size="sm" variant="outline" onClick={handleSubscribe} disabled={isLoading}>
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subskrybuj'}
-              </Button>
-            )}
           </div>
         )}
         {children}
