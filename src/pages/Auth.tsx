@@ -114,7 +114,7 @@ export default function Auth() {
   // Redirect when user is logged in AND has organization
   useEffect(() => {
     if (user && organization) {
-      navigate('/');
+      navigate('/dashboard');
     }
   }, [user, organization, navigate]);
 
