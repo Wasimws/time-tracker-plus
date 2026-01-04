@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, forwardRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,11 +42,12 @@ interface InviteInfo {
 // Timeout for loading states (10 seconds)
 const LOADING_TIMEOUT_MS = 10000;
 
-// Retry configuration for data refresh after registration
-const REFRESH_RETRY_DELAY = 500;
-const REFRESH_MAX_RETRIES = 6;
+// Retry configuration for data refresh after registration - faster retries
+const REFRESH_RETRY_DELAY = 300;
+const REFRESH_MAX_RETRIES = 8;
 
-export default function Auth() {
+// Use forwardRef to prevent React Router warning
+const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -70,10 +71,13 @@ export default function Auth() {
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const orgWaitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const organizationRef = useRef(organization);
+  const isMountedRef = useRef(true);
 
-  // Cleanup timeouts on unmount
+  // Cleanup timeouts and mounted ref on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
       }
@@ -366,15 +370,26 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with multiple retries
+      // Wait for DB to propagate, then refresh with smart retry
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Refresh user data - will trigger useEffect for navigation once org is loaded
+      // Refresh user data with smart early-exit when org is loaded
       for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+        if (!isMountedRef.current) break;
+        
         console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
         await refreshUserData();
+        
+        // Check if organization is now available (via ref to get current value)
         await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
+        
+        if (organizationRef.current) {
+          console.log('[AUTH] Organization loaded, navigating to dashboard...');
+          setLoadingWithTimeout(false);
+          navigate('/dashboard');
+          return;
+        }
       }
       
       // Clear loading - useEffect will handle navigation when user+org are ready
@@ -466,15 +481,26 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait for DB to propagate, then refresh with multiple retries
+      // Wait for DB to propagate, then refresh with smart retry
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Refresh user data - will trigger useEffect for navigation once org is loaded
+      // Refresh user data with smart early-exit when org is loaded
       for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+        if (!isMountedRef.current) break;
+        
         console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
         await refreshUserData();
+        
+        // Check if organization is now available (via ref to get current value)
         await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
+        
+        if (organizationRef.current) {
+          console.log('[AUTH] Organization loaded, navigating to dashboard...');
+          setLoadingWithTimeout(false);
+          navigate('/dashboard');
+          return;
+        }
       }
       
       // Clear loading - useEffect will handle navigation when user+org are ready
@@ -944,4 +970,6 @@ export default function Auth() {
       </Card>
     </div>
   );
-}
+});
+
+export default Auth;
