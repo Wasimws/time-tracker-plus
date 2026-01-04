@@ -371,8 +371,29 @@ export default function Auth() {
     orgCheckResult?.exists === true;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 -z-10">
+        {/* Gradient base */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/10" />
+        
+        {/* Animated blobs */}
+        <div className="absolute top-0 -left-4 w-72 h-72 bg-primary/20 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob" />
+        <div className="absolute top-0 -right-4 w-72 h-72 bg-accent/30 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000" />
+        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-primary/15 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000" />
+        <div className="absolute bottom-20 right-20 w-64 h-64 bg-accent/20 rounded-full mix-blend-multiply filter blur-xl opacity-60 animate-blob animation-delay-3000" />
+        
+        {/* Grid pattern overlay */}
+        <div 
+          className="absolute inset-0 opacity-[0.015]" 
+          style={{
+            backgroundImage: `linear-gradient(hsl(var(--primary)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary)) 1px, transparent 1px)`,
+            backgroundSize: '50px 50px'
+          }}
+        />
+      </div>
+      
+      <Card className="w-full max-w-md relative backdrop-blur-sm bg-card/95">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Clock className="h-8 w-8 text-primary" />
