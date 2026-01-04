@@ -188,7 +188,7 @@ serve(async (req) => {
 
     // Send email with retry
     const emailResult = await sendEmailWithRetry(resend, {
-      from: "Hourlyx <onboarding@resend.dev>",
+      from: "Hourlyx <kontakt@maturka-online.pl>",
       to: [email],
       subject: `Zaproszenie do ${org.name} - Hourlyx`,
       html: `
