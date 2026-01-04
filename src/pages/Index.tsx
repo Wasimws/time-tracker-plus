@@ -20,6 +20,9 @@ export default function Index() {
     }
   }, [user, loading, navigate]);
 
+  // Redirect to landing if user is logged in but accessed via old route
+  // This ensures the dashboard is always at /dashboard
+
   // Handle payment callback
   useEffect(() => {
     const payment = searchParams.get('payment');
