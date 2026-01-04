@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Loader2, Building2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Clock, Loader2, Building2, CheckCircle2, AlertCircle, Eye, EyeOff, Home, ArrowLeft } from 'lucide-react';
 import { APP_NAME, APP_DESCRIPTION, TRIAL_DURATION_DAYS } from '@/lib/constants';
 import { validatePassword, getPasswordStrength } from '@/lib/password-validation';
 
@@ -45,6 +45,7 @@ const LOADING_TIMEOUT_MS = 10000;
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [signupStep, setSignupStep] = useState<SignupStep>('credentials');
   const [signupData, setSignupData] = useState({ email: '', password: '', fullName: '' });
   const [orgCode, setOrgCode] = useState('');
@@ -55,6 +56,8 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [gdprConsent, setGdprConsent] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
@@ -149,6 +152,7 @@ export default function Auth() {
     e.preventDefault();
     setLoadingWithTimeout(true);
     setError(null);
+    setSuccessMessage(null);
 
     const formData = new FormData(e.currentTarget);
     const email = formData.get('email') as string;
@@ -165,6 +169,30 @@ export default function Auth() {
       setLoadingWithTimeout(false);
     }
     // Navigation will happen via useEffect when user state updates
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoadingWithTimeout(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotPasswordEmail, {
+        redirectTo: `${window.location.origin}/account`,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccessMessage('Link do resetowania hasła został wysłany na podany adres email. Sprawdź swoją skrzynkę.');
+        setForgotPasswordEmail('');
+      }
+    } catch (err) {
+      setError('Wystąpił błąd podczas wysyłania emaila');
+    } finally {
+      setLoadingWithTimeout(false);
+    }
   };
 
   const handlePasswordChange = (password: string) => {
@@ -443,6 +471,17 @@ export default function Auth() {
         />
       </div>
       
+      {/* Home button */}
+      <Link 
+        to="/" 
+        className="absolute top-4 left-4 z-10"
+      >
+        <Button variant="outline" className="gap-2">
+          <Home className="h-4 w-4" />
+          <span className="hidden sm:inline">Strona główna</span>
+        </Button>
+      </Link>
+
       <Card className="w-full max-w-md relative backdrop-blur-sm bg-card/95">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
@@ -456,6 +495,13 @@ export default function Auth() {
           {error && (
             <Alert variant="destructive" className="mb-4">
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {successMessage && (
+            <Alert className="mb-4 bg-primary/10 border-primary/20">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <AlertDescription>{successMessage}</AlertDescription>
             </Alert>
           )}
 
@@ -486,51 +532,113 @@ export default function Auth() {
             </TabsList>
             
             <TabsContent value="signin">
-              <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signin-email">Email</Label>
-                  <Input
-                    id="signin-email"
-                    name="email"
-                    type="email"
-                    placeholder="twoj@email.com"
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signin-password">Hasło</Label>
-                  <div className="relative">
-                    <Input
-                      id="signin-password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Twoje hasło"
-                      required
-                      disabled={isLoading}
-                    />
+              {showForgotPassword ? (
+                <div className="space-y-4">
+                  <div className="text-center mb-4">
+                    <h3 className="text-lg font-semibold">Zapomniałeś hasła?</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Podaj swój adres email, a wyślemy Ci link do resetowania hasła.
+                    </p>
+                  </div>
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-email">Email</Label>
+                      <Input
+                        id="forgot-email"
+                        type="email"
+                        placeholder="twoj@email.com"
+                        value={forgotPasswordEmail}
+                        onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={isLoading}>
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Wysyłanie...
+                        </>
+                      ) : (
+                        'Wyślij link resetujący'
+                      )}
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}
+                      className="w-full"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setError(null);
+                        setSuccessMessage(null);
+                      }}
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Wróć do logowania
+                    </Button>
+                  </form>
+                </div>
+              ) : (
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-email">Email</Label>
+                    <Input
+                      id="signin-email"
+                      name="email"
+                      type="email"
+                      placeholder="twoj@email.com"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signin-password">Hasło</Label>
+                    <div className="relative">
+                      <Input
+                        id="signin-password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Twoje hasło"
+                        required
+                        disabled={isLoading}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="px-0 text-sm"
+                      onClick={() => {
+                        setShowForgotPassword(true);
+                        setError(null);
+                        setSuccessMessage(null);
+                      }}
+                    >
+                      Zapomniałem hasła
                     </Button>
                   </div>
-                </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Logowanie...
-                    </>
-                  ) : (
-                    'Zaloguj się'
-                  )}
-                </Button>
-              </form>
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Logowanie...
+                      </>
+                    ) : (
+                      'Zaloguj się'
+                    )}
+                  </Button>
+                </form>
+              )}
             </TabsContent>
             
             <TabsContent value="signup">
