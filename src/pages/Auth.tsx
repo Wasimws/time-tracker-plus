@@ -69,6 +69,7 @@ export default function Auth() {
   const { signIn, user, organization, refreshUserData } = useAuth();
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const orgWaitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const organizationRef = useRef(organization);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -123,6 +124,11 @@ export default function Auth() {
     }
   };
 
+  // Keep organizationRef in sync
+  useEffect(() => {
+    organizationRef.current = organization;
+  }, [organization]);
+
   // Redirect when user is logged in AND has organization
   useEffect(() => {
     if (user && organization) {
@@ -141,9 +147,9 @@ export default function Auth() {
         console.log('[AUTH] Organization wait timeout - retrying refresh...');
         try {
           await refreshUserData();
-          // If still no org after refresh, show error
+          // Check ref instead of closure to get current value
           setTimeout(() => {
-            if (!organization) {
+            if (!organizationRef.current) {
               setError('Nie udało się załadować danych organizacji. Spróbuj się wylogować i zalogować ponownie.');
               setWaitingForOrg(false);
             }
@@ -345,7 +351,6 @@ export default function Auth() {
       console.log('[AUTH] Session obtained, assigning to organization with invite token:', inviteToken);
 
       // Now assign the user to organization using the invitation
-      // IMPORTANT: Pass the access token explicitly since the global client might not have the session yet
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
@@ -361,26 +366,18 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait a bit for DB to propagate, then refresh with retry
+      // Wait for DB to propagate, then refresh with multiple retries
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Retry refreshUserData until organization is loaded
-      let retries = 0;
-      while (retries < REFRESH_MAX_RETRIES) {
-        console.log(`[AUTH] Refreshing user data, attempt ${retries + 1}`);
-        const success = await refreshUserData();
-        if (success && organization) {
-          console.log('[AUTH] User data refreshed successfully with organization');
-          break;
-        }
-        retries++;
-        if (retries < REFRESH_MAX_RETRIES) {
-          await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
-        }
+      // Refresh user data - will trigger useEffect for navigation once org is loaded
+      for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
+        await refreshUserData();
+        await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
       }
       
-      // Clear loading regardless of result - navigation will handle the rest
+      // Clear loading - useEffect will handle navigation when user+org are ready
       setLoadingWithTimeout(false);
     } catch (err: unknown) {
       console.error('[AUTH] Invite signup error:', err);
@@ -469,26 +466,18 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Wait a bit for DB to propagate, then refresh with retry
+      // Wait for DB to propagate, then refresh with multiple retries
       console.log('[AUTH] Waiting for DB propagation before refresh...');
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Retry refreshUserData until organization is loaded
-      let retries = 0;
-      while (retries < REFRESH_MAX_RETRIES) {
-        console.log(`[AUTH] Refreshing user data, attempt ${retries + 1}`);
-        const success = await refreshUserData();
-        if (success && organization) {
-          console.log('[AUTH] User data refreshed successfully with organization');
-          break;
-        }
-        retries++;
-        if (retries < REFRESH_MAX_RETRIES) {
-          await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
-        }
+      // Refresh user data - will trigger useEffect for navigation once org is loaded
+      for (let i = 0; i < REFRESH_MAX_RETRIES; i++) {
+        console.log(`[AUTH] Refreshing user data, attempt ${i + 1}`);
+        await refreshUserData();
+        await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
       }
       
-      // Clear loading regardless of result - navigation will handle the rest
+      // Clear loading - useEffect will handle navigation when user+org are ready
       setLoadingWithTimeout(false);
     } catch (err: unknown) {
       console.error('[AUTH] Signup step 2 error:', err);

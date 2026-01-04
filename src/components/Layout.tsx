@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useViewMode } from '@/hooks/useViewMode';
+import { useViewModeSafe } from '@/hooks/useViewMode';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
@@ -21,37 +21,39 @@ interface LayoutProps {
 }
 
 function ViewModeToggleButton() {
-  try {
-    const { isEmployeeViewMode, toggleViewMode } = useViewMode();
-    
-    return (
-      <Button
-        onClick={toggleViewMode}
-        variant={isEmployeeViewMode ? "default" : "outline"}
-        size="sm"
-        className={cn(
-          "gap-2 transition-all duration-300",
-          isEmployeeViewMode && "bg-primary text-primary-foreground shadow-lg"
-        )}
-      >
-        <ArrowLeftRight className="w-4 h-4" />
-        {isEmployeeViewMode ? (
-          <>
-            <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline">Tryb Zarządu</span>
-          </>
-        ) : (
-          <>
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">Tryb Użytkownika</span>
-          </>
-        )}
-      </Button>
-    );
-  } catch {
-    // ViewModeProvider not available (employee user)
+  const viewMode = useViewModeSafe();
+  
+  // ViewModeProvider not available (employee user or outside provider)
+  if (!viewMode) {
     return null;
   }
+
+  const { isEmployeeViewMode, toggleViewMode } = viewMode;
+  
+  return (
+    <Button
+      onClick={toggleViewMode}
+      variant={isEmployeeViewMode ? "default" : "outline"}
+      size="sm"
+      className={cn(
+        "gap-2 transition-all duration-300",
+        isEmployeeViewMode && "bg-primary text-primary-foreground shadow-lg"
+      )}
+    >
+      <ArrowLeftRight className="w-4 h-4" />
+      {isEmployeeViewMode ? (
+        <>
+          <Shield className="w-4 h-4" />
+          <span className="hidden sm:inline">Tryb Zarządu</span>
+        </>
+      ) : (
+        <>
+          <Users className="w-4 h-4" />
+          <span className="hidden sm:inline">Tryb Użytkownika</span>
+        </>
+      )}
+    </Button>
+  );
 }
 
 export function Layout({ children }: LayoutProps) {
