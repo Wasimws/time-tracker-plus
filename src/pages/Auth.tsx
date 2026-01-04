@@ -214,6 +214,8 @@ export default function Auth() {
     setError(null);
 
     try {
+      console.log('[AUTH] Starting invite signup for:', email);
+      
       // First, register the user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -225,6 +227,8 @@ export default function Auth() {
           },
         },
       });
+
+      console.log('[AUTH] SignUp result:', { hasSession: !!authData.session, error: authError?.message });
 
       if (authError) {
         if (authError.message.includes('already')) {
@@ -242,19 +246,28 @@ export default function Auth() {
         return;
       }
 
+      console.log('[AUTH] Session obtained, assigning to organization with invite token:', inviteToken);
+
       // Now assign the user to organization using the invitation
+      // IMPORTANT: Pass the access token explicitly since the global client might not have the session yet
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
           inviteToken,
         },
+        headers: {
+          Authorization: `Bearer ${authData.session.access_token}`,
+        },
       });
+
+      console.log('[AUTH] register-with-org result:', { data, error: error?.message });
 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
       await refreshUserData();
     } catch (err: unknown) {
+      console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
       setLoadingWithTimeout(false);
@@ -288,6 +301,8 @@ export default function Auth() {
     setError(null);
 
     try {
+      console.log('[AUTH] Starting signup step 2 for:', signupData.email);
+      
       // First, register the user with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupData.email,
@@ -299,6 +314,8 @@ export default function Auth() {
           },
         },
       });
+
+      console.log('[AUTH] SignUp result:', { hasSession: !!authData.session, error: authError?.message });
 
       if (authError) {
         if (authError.message.includes('already')) {
@@ -316,14 +333,22 @@ export default function Auth() {
         return;
       }
 
+      console.log('[AUTH] Session obtained, assigning to organization:', orgCode);
+
       // Now assign the user to an organization using the edge function
+      // IMPORTANT: Pass the access token explicitly since the global client might not have the session yet
       const { data, error } = await supabase.functions.invoke('register-with-org', {
         body: {
           action: 'assign_org',
           organizationCode: orgCode,
           organizationName: orgName || orgCode,
         },
+        headers: {
+          Authorization: `Bearer ${authData.session.access_token}`,
+        },
       });
+
+      console.log('[AUTH] register-with-org result:', { data, error: error?.message });
 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -333,6 +358,7 @@ export default function Auth() {
 
       // Navigation will happen via useEffect
     } catch (err: unknown) {
+      console.error('[AUTH] Signup step 2 error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
       setError(errorMessage);
       setLoadingWithTimeout(false);
