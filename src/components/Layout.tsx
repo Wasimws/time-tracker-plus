@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { Clock, LogOut, User, Shield, Building2, Settings } from 'lucide-react';
+import { Clock, LogOut, User, Shield, Building2, Settings, Users, ArrowLeftRight } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
 import {
   DropdownMenu,
@@ -13,9 +13,45 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useViewMode } from '@/hooks/useViewMode';
+import { cn } from '@/lib/utils';
 
 interface LayoutProps {
   children: ReactNode;
+}
+
+function ViewModeToggleButton() {
+  try {
+    const { isEmployeeViewMode, toggleViewMode } = useViewMode();
+    
+    return (
+      <Button
+        onClick={toggleViewMode}
+        variant={isEmployeeViewMode ? "default" : "outline"}
+        size="sm"
+        className={cn(
+          "gap-2 transition-all duration-300",
+          isEmployeeViewMode && "bg-primary text-primary-foreground shadow-lg"
+        )}
+      >
+        <ArrowLeftRight className="w-4 h-4" />
+        {isEmployeeViewMode ? (
+          <>
+            <Shield className="w-4 h-4" />
+            <span className="hidden sm:inline">Tryb Zarządu</span>
+          </>
+        ) : (
+          <>
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">Tryb Użytkownika</span>
+          </>
+        )}
+      </Button>
+    );
+  } catch {
+    // ViewModeProvider not available (employee user)
+    return null;
+  }
 }
 
 export function Layout({ children }: LayoutProps) {
@@ -45,6 +81,8 @@ export function Layout({ children }: LayoutProps) {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            {role === 'management' && <ViewModeToggleButton />}
+            
             <div className="hidden sm:flex items-center gap-2">
               {role === 'management' ? (
                 <Badge variant="secondary" className="flex items-center gap-1">

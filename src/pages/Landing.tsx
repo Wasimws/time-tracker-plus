@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ScrollReveal } from "@/components/landing/ScrollReveal";
 import { SupportBot } from "@/components/landing/SupportBot";
-import { ContactSection } from "@/components/landing/ContactSection";
 import { 
   Users, 
   Mail, 
@@ -302,9 +301,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Contact Section */}
-      <ContactSection />
-
       {/* Footer */}
       <footer className="py-12 px-4 border-t border-border">
         <div className="container mx-auto">
@@ -317,6 +313,9 @@ const Landing = () => {
             </div>
             
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+              <Link to="/contact" className="hover:text-foreground transition-colors">
+                Kontakt
+              </Link>
               <Link to="/privacy-policy" className="hover:text-foreground transition-colors">
                 Polityka Prywatności
               </Link>
