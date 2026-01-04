@@ -80,10 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const fetchUserData = useCallback(async (userId: string, retryCount = 0): Promise<boolean> => {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 400;
-
+  const fetchUserData = useCallback(async (userId: string): Promise<boolean> => {
     try {
       // Fetch profile with organization
       const { data: profile, error: profileError } = await supabase
@@ -94,7 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('[AUTH] Error fetching profile:', profileError);
-        throw profileError;
+        setLoading(false);
+        return false;
       }
 
       if (profile?.theme_preference) {
@@ -111,7 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (orgError) {
           console.error('[AUTH] Error fetching organization:', orgError);
-          throw orgError;
+          setLoading(false);
+          return false;
         }
 
         if (org) {
@@ -159,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null);
         }
       } else {
-        // User has no organization - this is expected for new users before assignment
+        // User has no organization yet - this is expected for new users before assignment
         setOrganization(null);
         setSubscription(null);
       }
@@ -173,7 +172,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (roleError) {
         console.error('[AUTH] Error fetching role:', roleError);
-        throw roleError;
       }
 
       if (roleData) {
@@ -186,13 +184,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return !!profile?.organization_id; // Return true only if org is loaded
     } catch (error) {
       console.error('[AUTH] Error fetching user data:', error);
-      
-      // Retry logic for transient errors only
-      if (retryCount < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-        return fetchUserData(userId, retryCount + 1);
-      }
-      
       setLoading(false);
       return false;
     }
@@ -201,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUserData = useCallback(async (): Promise<boolean> => {
     if (user) {
       setLoading(true);
-      return await fetchUserData(user.id, 0);
+      return await fetchUserData(user.id);
     }
     return false;
   }, [user, fetchUserData]);
