@@ -42,6 +42,10 @@ interface InviteInfo {
 // Timeout for loading states (10 seconds)
 const LOADING_TIMEOUT_MS = 10000;
 
+// Retry configuration for data refresh after registration
+const REFRESH_RETRY_DELAY = 500;
+const REFRESH_MAX_RETRIES = 6;
+
 export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,17 +62,22 @@ export default function Auth() {
   const [gdprConsent, setGdprConsent] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [waitingForOrg, setWaitingForOrg] = useState(false);
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
   const navigate = useNavigate();
   const { signIn, user, organization, refreshUserData } = useAuth();
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const orgWaitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
+      }
+      if (orgWaitTimeoutRef.current) {
+        clearTimeout(orgWaitTimeoutRef.current);
       }
     };
   }, []);
@@ -117,9 +126,42 @@ export default function Auth() {
   // Redirect when user is logged in AND has organization
   useEffect(() => {
     if (user && organization) {
+      setWaitingForOrg(false);
       navigate('/dashboard');
     }
   }, [user, organization, navigate]);
+
+  // Handle waiting state for organization with timeout
+  useEffect(() => {
+    if (user && !organization && !waitingForOrg) {
+      setWaitingForOrg(true);
+      
+      // Set a timeout to stop waiting and retry refresh
+      orgWaitTimeoutRef.current = setTimeout(async () => {
+        console.log('[AUTH] Organization wait timeout - retrying refresh...');
+        try {
+          await refreshUserData();
+          // If still no org after refresh, show error
+          setTimeout(() => {
+            if (!organization) {
+              setError('Nie udało się załadować danych organizacji. Spróbuj się wylogować i zalogować ponownie.');
+              setWaitingForOrg(false);
+            }
+          }, 1000);
+        } catch (err) {
+          console.error('[AUTH] Error refreshing user data:', err);
+          setError('Wystąpił błąd podczas ładowania danych. Spróbuj ponownie.');
+          setWaitingForOrg(false);
+        }
+      }, 5000); // 5 second timeout
+      
+      return () => {
+        if (orgWaitTimeoutRef.current) {
+          clearTimeout(orgWaitTimeoutRef.current);
+        }
+      };
+    }
+  }, [user, organization, waitingForOrg, refreshUserData]);
 
   // Debounced organization check
   useEffect(() => {
@@ -167,8 +209,10 @@ export default function Auth() {
         setError(error.message);
       }
       setLoadingWithTimeout(false);
+    } else {
+      // Login successful - turn off loading, useEffect will handle org waiting and navigation
+      setLoadingWithTimeout(false);
     }
-    // Navigation will happen via useEffect when user state updates
   };
 
   const handleForgotPassword = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -317,7 +361,27 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      await refreshUserData();
+      // Wait a bit for DB to propagate, then refresh with retry
+      console.log('[AUTH] Waiting for DB propagation before refresh...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Retry refreshUserData until organization is loaded
+      let retries = 0;
+      while (retries < REFRESH_MAX_RETRIES) {
+        console.log(`[AUTH] Refreshing user data, attempt ${retries + 1}`);
+        const success = await refreshUserData();
+        if (success && organization) {
+          console.log('[AUTH] User data refreshed successfully with organization');
+          break;
+        }
+        retries++;
+        if (retries < REFRESH_MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
+        }
+      }
+      
+      // Clear loading regardless of result - navigation will handle the rest
+      setLoadingWithTimeout(false);
     } catch (err: unknown) {
       console.error('[AUTH] Invite signup error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
@@ -405,10 +469,27 @@ export default function Auth() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      // Refresh user data to get organization info
-      await refreshUserData();
-
-      // Navigation will happen via useEffect
+      // Wait a bit for DB to propagate, then refresh with retry
+      console.log('[AUTH] Waiting for DB propagation before refresh...');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Retry refreshUserData until organization is loaded
+      let retries = 0;
+      while (retries < REFRESH_MAX_RETRIES) {
+        console.log(`[AUTH] Refreshing user data, attempt ${retries + 1}`);
+        const success = await refreshUserData();
+        if (success && organization) {
+          console.log('[AUTH] User data refreshed successfully with organization');
+          break;
+        }
+        retries++;
+        if (retries < REFRESH_MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, REFRESH_RETRY_DELAY));
+        }
+      }
+      
+      // Clear loading regardless of result - navigation will handle the rest
+      setLoadingWithTimeout(false);
     } catch (err: unknown) {
       console.error('[AUTH] Signup step 2 error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas rejestracji';
@@ -425,12 +506,13 @@ export default function Auth() {
     setError(null);
   };
 
-  // Show loading while checking auth state
-  if (user && !organization) {
+  // Show loading while checking auth state (with timeout protection)
+  if (user && !organization && waitingForOrg && !error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="text-sm text-muted-foreground">Ładowanie danych organizacji...</p>
+        <p className="text-xs text-muted-foreground">To może potrwać kilka sekund...</p>
       </div>
     );
   }
