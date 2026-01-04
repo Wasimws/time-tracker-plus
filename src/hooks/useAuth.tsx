@@ -80,10 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const fetchUserData = useCallback(async (userId: string, retryCount = 0): Promise<boolean> => {
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY = 400;
-
+  const fetchUserData = useCallback(async (userId: string): Promise<boolean> => {
     try {
       // Fetch profile with organization
       const { data: profile, error: profileError } = await supabase
@@ -94,7 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) {
         console.error('[AUTH] Error fetching profile:', profileError);
-        throw profileError;
+        setLoading(false);
+        return false;
       }
 
       if (profile?.theme_preference) {
@@ -103,16 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Fetch organization with trial info
       if (profile?.organization_id) {
-        const { data: org, error: orgError } = await supabase
+        const { data: org } = await supabase
           .from('organizations')
           .select('id, name, code, trial_start_at, trial_end_at')
           .eq('id', profile.organization_id)
           .maybeSingle();
-
-        if (orgError) {
-          console.error('[AUTH] Error fetching organization:', orgError);
-          throw orgError;
-        }
 
         if (org) {
           const trialStartAt = org.trial_start_at ? new Date(org.trial_start_at) : null;
@@ -126,10 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             trialEndAt,
           });
 
-          // Check if trial is active (from organizations table)
           const isTrialActive = trialEndAt !== null && trialEndAt > new Date();
 
-          // Fetch subscription status - ORGANIZATION LEVEL
+          // Fetch subscription status
           const { data: subData } = await supabase
             .from('subscriptions')
             .select('status, trial_ends_at, current_period_end')
@@ -159,22 +151,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null);
         }
       } else {
-        // User has no organization - this is expected for new users before assignment
         setOrganization(null);
         setSubscription(null);
       }
 
-      // Fetch user role (with organization context)
-      const { data: roleData, error: roleError } = await supabase
+      // Fetch user role
+      const { data: roleData } = await supabase
         .from('user_roles')
         .select('role, organization_id')
         .eq('user_id', userId)
         .maybeSingle();
-
-      if (roleError) {
-        console.error('[AUTH] Error fetching role:', roleError);
-        throw roleError;
-      }
 
       if (roleData) {
         setRole(roleData.role as AppRole);
@@ -183,16 +169,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setLoading(false);
-      return !!profile?.organization_id; // Return true only if org is loaded
+      return !!profile?.organization_id;
     } catch (error) {
       console.error('[AUTH] Error fetching user data:', error);
-      
-      // Retry logic for transient errors only
-      if (retryCount < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-        return fetchUserData(userId, retryCount + 1);
-      }
-      
       setLoading(false);
       return false;
     }
@@ -201,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUserData = useCallback(async (): Promise<boolean> => {
     if (user) {
       setLoading(true);
-      return await fetchUserData(user.id, 0);
+      return await fetchUserData(user.id);
     }
     return false;
   }, [user, fetchUserData]);
@@ -217,15 +196,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Use setTimeout to avoid Supabase auth deadlock
           setTimeout(() => {
             if (mounted) {
               fetchUserData(session.user.id);
-              // Only log login if it was triggered by real user action (signIn method)
-              // NOT on session rehydration (page refresh, token refresh)
               if (event === 'SIGNED_IN' && isRealLoginRef.current) {
                 logActivityInternal(session.user.id, 'user_login', 'Użytkownik zalogował się');
-                isRealLoginRef.current = false; // Reset flag after logging
+                isRealLoginRef.current = false;
               }
             }
           }, 0);
