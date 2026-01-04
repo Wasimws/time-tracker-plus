@@ -129,7 +129,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     organizationRef.current = organization;
   }, [organization]);
 
-  // Handle user logged in - navigate to dashboard if org exists, or try to assign pending org
+  // Handle user logged in - try to assign pending org if needed
   useEffect(() => {
     if (!user) return;
     
@@ -146,32 +146,26 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
     const pendingOrgName = metadata.pending_org_name;
     const pendingInviteToken = metadata.invite_token;
     
-    // If no pending assignment - just wait briefly for data load
     if (!pendingOrgCode && !pendingInviteToken) {
-      if (!waitingForOrg) {
+      // No pending assignment and no org - show error after timeout
+      if (!waitingForOrg && !error) {
         setWaitingForOrg(true);
-        // Short timeout - if still no org, show form again
         orgWaitTimeoutRef.current = setTimeout(() => {
           if (!organizationRef.current && isMountedRef.current) {
+            setError('Brak przypisanej organizacji. Skontaktuj się z administratorem.');
             setWaitingForOrg(false);
-            // Don't show error - user may need to complete registration
           }
-        }, 3000);
+        }, 5000);
       }
       return;
     }
 
-    // Try to assign organization (only once)
-    if (waitingForOrg) return;
-    
+    // Try to assign organization
     const assignOrg = async () => {
       setWaitingForOrg(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setWaitingForOrg(false);
-          return;
-        }
+        if (!session) return;
 
         const { data, error: fnError } = await supabase.functions.invoke('register-with-org', {
           body: {
@@ -185,11 +179,8 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
           },
         });
 
-        if (fnError || data?.error) {
-          setError(data?.error || 'Nie udało się przypisać organizacji.');
-          setWaitingForOrg(false);
-          return;
-        }
+        if (fnError) throw fnError;
+        if (data?.error) throw new Error(data.error);
 
         // Clear pending data from metadata
         await supabase.auth.updateUser({
@@ -201,9 +192,9 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         });
 
         await refreshUserData();
-        // Navigation will happen via the organization check above
       } catch (err) {
-        setError('Nie udało się przypisać organizacji.');
+        console.error('Error assigning org:', err);
+        setError('Nie udało się przypisać organizacji. Spróbuj ponownie.');
         setWaitingForOrg(false);
       }
     };
@@ -215,7 +206,7 @@ const Auth = forwardRef<HTMLDivElement>(function Auth(_props, ref) {
         clearTimeout(orgWaitTimeoutRef.current);
       }
     };
-  }, [user, organization, navigate, refreshUserData, waitingForOrg]);
+  }, [user, organization, navigate, refreshUserData, waitingForOrg, error]);
 
   // Debounced organization check
   useEffect(() => {
