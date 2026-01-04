@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ScrollReveal } from "@/components/landing/ScrollReveal";
+import { SupportBot } from "@/components/landing/SupportBot";
 import { 
   Users, 
   Mail, 
@@ -12,7 +14,8 @@ import {
   BarChart3,
   UserPlus,
   ArrowRight,
-  Check
+  Check,
+  Sparkles
 } from "lucide-react";
 
 const Landing = () => {
@@ -20,32 +23,38 @@ const Landing = () => {
     {
       icon: Users,
       title: "Panel Zarządu",
-      description: "Zarządzaj zespołem, przypisuj role i kontroluj dostęp do danych firmy."
+      description: "Zarządzaj zespołem, przypisuj role i kontroluj dostęp do danych firmy.",
+      delay: 0
     },
     {
       icon: Clock,
       title: "Panel Pracownika",
-      description: "Rejestruj godziny pracy, obliczaj zarobki i śledź swoją aktywność."
+      description: "Rejestruj godziny pracy, obliczaj zarobki i śledź swoją aktywność.",
+      delay: 100
     },
     {
       icon: Mail,
       title: "Zaproszenia Email",
-      description: "Zapraszaj nowych pracowników przez email z automatycznym przypisaniem do organizacji."
+      description: "Zapraszaj nowych pracowników przez email z automatycznym przypisaniem do organizacji.",
+      delay: 200
     },
     {
       icon: Activity,
       title: "Dziennik Aktywności",
-      description: "Śledź wszystkie działania w firmie z pełnym logiem zdarzeń."
+      description: "Śledź wszystkie działania w firmie z pełnym logiem zdarzeń.",
+      delay: 300
     },
     {
       icon: CreditCard,
       title: "Subskrypcje",
-      description: "Elastyczne plany płatności z integracją Stripe i portalem klienta."
+      description: "Elastyczne plany płatności z integracją Stripe i portalem klienta.",
+      delay: 400
     },
     {
       icon: Shield,
       title: "3 Dni Trial",
-      description: "Wypróbuj wszystkie funkcje przez 3 dni całkowicie za darmo."
+      description: "Wypróbuj wszystkie funkcje przez 3 dni całkowicie za darmo.",
+      delay: 500
     }
   ];
 
@@ -108,34 +117,42 @@ const Landing = () => {
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4">
         <div className="container mx-auto text-center max-w-4xl">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-accent-foreground text-sm font-medium mb-8 animate-fade-in">
-            <Shield className="w-4 h-4" />
-            <span>3 dni darmowego trial</span>
-          </div>
+          <ScrollReveal>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent text-accent-foreground text-sm font-medium mb-8">
+              <Sparkles className="w-4 h-4" />
+              <span>3 dni darmowego trial</span>
+            </div>
+          </ScrollReveal>
           
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight animate-fade-in">
-            Zarządzaj czasem pracy
-            <span className="block text-primary mt-2">swojego zespołu</span>
-          </h1>
+          <ScrollReveal delay={100}>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
+              Zarządzaj czasem pracy
+              <span className="block text-primary mt-2">swojego zespołu</span>
+            </h1>
+          </ScrollReveal>
           
-          <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in">
-            Hourlyx to kompletny system do śledzenia czasu pracy, zarządzania pracownikami 
-            i subskrypcjami. Wszystko w jednym miejscu.
-          </p>
+          <ScrollReveal delay={200}>
+            <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+              Hourlyx to kompletny system do śledzenia czasu pracy, zarządzania pracownikami 
+              i subskrypcjami. Wszystko w jednym miejscu.
+            </p>
+          </ScrollReveal>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in">
-            <Link to="/auth?mode=register">
-              <Button size="lg" className="text-lg px-8 py-6 gap-2 w-full sm:w-auto group">
-                Rozpocznij za darmo
-                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-            <Link to="/auth">
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6 w-full sm:w-auto">
-                Mam już konto
-              </Button>
-            </Link>
-          </div>
+          <ScrollReveal delay={300}>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link to="/auth?mode=register">
+                <Button size="lg" className="text-lg px-8 py-6 gap-2 w-full sm:w-auto group">
+                  Rozpocznij za darmo
+                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link to="/auth">
+                <Button size="lg" variant="outline" className="text-lg px-8 py-6 w-full sm:w-auto">
+                  Mam już konto
+                </Button>
+              </Link>
+            </div>
+          </ScrollReveal>
         </div>
       </section>
 
@@ -149,13 +166,12 @@ const Landing = () => {
               { value: "∞", label: "pracowników" },
               { value: "24/7", label: "dostęp online" }
             ].map((stat, index) => (
-              <div 
-                key={index}
-                className="text-center p-6 rounded-2xl bg-card/50 backdrop-blur-sm border border-border hover:border-primary/50 transition-all duration-300 hover:scale-105"
-              >
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{stat.value}</div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
-              </div>
+              <ScrollReveal key={index} delay={index * 100}>
+                <div className="text-center p-6 rounded-2xl bg-card/50 backdrop-blur-sm border border-border hover:border-primary/50 transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-default">
+                  <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{stat.value}</div>
+                  <div className="text-sm text-muted-foreground">{stat.label}</div>
+                </div>
+              </ScrollReveal>
             ))}
           </div>
         </div>
@@ -164,33 +180,34 @@ const Landing = () => {
       {/* Features Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-              Wszystko, czego potrzebujesz
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Kompletny zestaw narzędzi do zarządzania czasem pracy i zespołem
-            </p>
-          </div>
+          <ScrollReveal>
+            <div className="text-center mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+                Wszystko, czego potrzebujesz
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Kompletny zestaw narzędzi do zarządzania czasem pracy i zespołem
+              </p>
+            </div>
+          </ScrollReveal>
           
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {features.map((feature, index) => (
-              <Card 
-                key={index}
-                className="group bg-card/50 backdrop-blur-sm border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
-              >
-                <CardContent className="p-6">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                    <feature.icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-foreground mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </CardContent>
-              </Card>
+              <ScrollReveal key={index} delay={feature.delay}>
+                <Card className="group bg-card/50 backdrop-blur-sm border-border hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-2 cursor-default h-full">
+                  <CardContent className="p-6">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
+                      <feature.icon className="w-7 h-7 text-primary" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-foreground mb-2">
+                      {feature.title}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {feature.description}
+                    </p>
+                  </CardContent>
+                </Card>
+              </ScrollReveal>
             ))}
           </div>
         </div>
@@ -200,53 +217,55 @@ const Landing = () => {
       <section className="py-20 px-4 bg-card/30">
         <div className="container mx-auto">
           <div className="max-w-5xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-6">
-                Dlaczego Hourlyx?
-              </h2>
-              <p className="text-lg text-muted-foreground mb-8">
-                Stworzyliśmy Hourlyx z myślą o prostocie i efektywności. 
-                Żadnych zbędnych funkcji – tylko to, co naprawdę potrzebujesz.
-              </p>
-              
-              <ul className="space-y-4">
-                {benefits.map((benefit, index) => (
-                  <li key={index} className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <Check className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-foreground">{benefit}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <ScrollReveal direction="left">
+              <div>
+                <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-6">
+                  Dlaczego Hourlyx?
+                </h2>
+                <p className="text-lg text-muted-foreground mb-8">
+                  Stworzyliśmy Hourlyx z myślą o prostocie i efektywności. 
+                  Żadnych zbędnych funkcji – tylko to, co naprawdę potrzebujesz.
+                </p>
+                
+                <ul className="space-y-4">
+                  {benefits.map((benefit, index) => (
+                    <li key={index} className="flex items-center gap-3 group">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/40 group-hover:scale-110 transition-all duration-300">
+                        <Check className="w-4 h-4 text-primary" />
+                      </div>
+                      <span className="text-foreground group-hover:text-primary transition-colors duration-300">{benefit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </ScrollReveal>
             
-            <div className="relative">
-              <div className="aspect-square rounded-3xl bg-gradient-to-br from-primary/20 to-accent/20 p-8 flex items-center justify-center">
-                <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
-                  <div className="aspect-square rounded-2xl bg-card/80 backdrop-blur-sm border border-border p-4 flex flex-col items-center justify-center hover:scale-105 transition-transform">
-                    <BarChart3 className="w-8 h-8 text-primary mb-2" />
-                    <span className="text-sm text-muted-foreground">Statystyki</span>
-                  </div>
-                  <div className="aspect-square rounded-2xl bg-card/80 backdrop-blur-sm border border-border p-4 flex flex-col items-center justify-center hover:scale-105 transition-transform">
-                    <Users className="w-8 h-8 text-primary mb-2" />
-                    <span className="text-sm text-muted-foreground">Zespół</span>
-                  </div>
-                  <div className="aspect-square rounded-2xl bg-card/80 backdrop-blur-sm border border-border p-4 flex flex-col items-center justify-center hover:scale-105 transition-transform">
-                    <Clock className="w-8 h-8 text-primary mb-2" />
-                    <span className="text-sm text-muted-foreground">Czas</span>
-                  </div>
-                  <div className="aspect-square rounded-2xl bg-card/80 backdrop-blur-sm border border-border p-4 flex flex-col items-center justify-center hover:scale-105 transition-transform">
-                    <Activity className="w-8 h-8 text-primary mb-2" />
-                    <span className="text-sm text-muted-foreground">Aktywność</span>
+            <ScrollReveal direction="right" delay={200}>
+              <div className="relative">
+                <div className="aspect-square rounded-3xl bg-gradient-to-br from-primary/20 to-accent/20 p-8 flex items-center justify-center">
+                  <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
+                    {[
+                      { icon: BarChart3, label: "Statystyki" },
+                      { icon: Users, label: "Zespół" },
+                      { icon: Clock, label: "Czas" },
+                      { icon: Activity, label: "Aktywność" }
+                    ].map((item, index) => (
+                      <div 
+                        key={index}
+                        className="aspect-square rounded-2xl bg-card/80 backdrop-blur-sm border border-border p-4 flex flex-col items-center justify-center hover:scale-110 hover:shadow-lg hover:border-primary/50 transition-all duration-300 cursor-default"
+                      >
+                        <item.icon className="w-8 h-8 text-primary mb-2" />
+                        <span className="text-sm text-muted-foreground">{item.label}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
+                
+                {/* Floating elements */}
+                <div className="absolute -top-4 -right-4 w-20 h-20 rounded-2xl bg-primary/20 backdrop-blur-sm animate-blob" />
+                <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-xl bg-accent/30 backdrop-blur-sm animate-blob animation-delay-2000" />
               </div>
-              
-              {/* Floating elements */}
-              <div className="absolute -top-4 -right-4 w-20 h-20 rounded-2xl bg-primary/20 backdrop-blur-sm animate-blob" />
-              <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-xl bg-accent/30 backdrop-blur-sm animate-blob animation-delay-2000" />
-            </div>
+            </ScrollReveal>
           </div>
         </div>
       </section>
@@ -254,28 +273,31 @@ const Landing = () => {
       {/* CTA Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto">
-          <div className="max-w-3xl mx-auto text-center bg-gradient-to-br from-primary/10 to-accent/10 rounded-3xl p-8 sm:p-12 border border-border">
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-              Gotowy, aby zacząć?
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8">
-              Wypróbuj Hourlyx przez 3 dni za darmo. Bez karty kredytowej.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/auth?mode=register">
-                <Button size="lg" className="text-lg px-8 py-6 gap-2 w-full sm:w-auto">
-                  <UserPlus className="w-5 h-5" />
-                  Zarejestruj się
-                </Button>
-              </Link>
-              <Link to="/auth">
-                <Button size="lg" variant="outline" className="text-lg px-8 py-6 w-full sm:w-auto">
-                  Zaloguj się
-                </Button>
-              </Link>
+          <ScrollReveal>
+            <div className="max-w-3xl mx-auto text-center bg-gradient-to-br from-primary/10 to-accent/10 rounded-3xl p-8 sm:p-12 border border-border hover:border-primary/30 transition-all duration-500 hover:shadow-2xl">
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+                Gotowy, aby zacząć?
+              </h2>
+              <p className="text-lg text-muted-foreground mb-8">
+                Wypróbuj Hourlyx przez 3 dni za darmo. Bez karty kredytowej.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link to="/auth?mode=register">
+                  <Button size="lg" className="text-lg px-8 py-6 gap-2 w-full sm:w-auto group">
+                    <UserPlus className="w-5 h-5" />
+                    Zarejestruj się
+                    <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+                <Link to="/auth">
+                  <Button size="lg" variant="outline" className="text-lg px-8 py-6 w-full sm:w-auto hover:bg-primary/10">
+                    Zaloguj się
+                  </Button>
+                </Link>
+              </div>
             </div>
-          </div>
+          </ScrollReveal>
         </div>
       </section>
 
@@ -305,6 +327,9 @@ const Landing = () => {
           </div>
         </div>
       </footer>
+
+      {/* Support Bot */}
+      <SupportBot />
     </div>
   );
 };
