@@ -183,13 +183,23 @@ export default function Auth() {
     }
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-    const fullName = formData.get('fullName') as string;
+    const emailRaw = formData.get('email');
+    const passwordRaw = formData.get('password');
+    const fullNameRaw = formData.get('fullName');
+
+    // Defensive reading - handle null/undefined values
+    const email = typeof emailRaw === 'string' ? emailRaw.trim() : '';
+    const password = typeof passwordRaw === 'string' ? passwordRaw : '';
+    const fullName = typeof fullNameRaw === 'string' ? fullNameRaw.trim() : '';
 
     // Validate inputs
-    if (!email.trim() || !fullName.trim()) {
+    if (!email || !fullName) {
       setError('Wszystkie pola są wymagane');
+      return;
+    }
+
+    if (!password) {
+      setError('Hasło jest wymagane');
       return;
     }
 
@@ -199,11 +209,11 @@ export default function Auth() {
       return;
     }
 
-    setSignupData({ email: email.trim(), password, fullName: fullName.trim() });
+    setSignupData({ email, password, fullName });
     
     // If we have a valid invitation, skip organization step
     if (inviteInfo?.valid) {
-      handleInviteSignup(email.trim(), password, fullName.trim());
+      handleInviteSignup(email, password, fullName);
     } else {
       setSignupStep('organization');
     }
