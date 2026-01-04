@@ -27,10 +27,23 @@ export function ViewModeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Hook that throws if used outside ViewModeProvider
+ * Use this when ViewModeProvider is guaranteed to be present
+ */
 export function useViewMode() {
   const context = useContext(ViewModeContext);
   if (context === undefined) {
     throw new Error('useViewMode must be used within a ViewModeProvider');
   }
   return context;
+}
+
+/**
+ * Safe hook that returns null if used outside ViewModeProvider
+ * Use this in components that may render outside the provider
+ */
+export function useViewModeSafe(): ViewModeContextType | null {
+  const context = useContext(ViewModeContext);
+  return context ?? null;
 }
