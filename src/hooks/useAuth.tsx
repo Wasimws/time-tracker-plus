@@ -36,7 +36,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   setThemePreference: (theme: ThemePreference) => Promise<void>;
   logActivity: (actionType: string, description: string, metadata?: Record<string, unknown>) => Promise<void>;
-  refreshUserData: () => Promise<void>;
+  refreshUserData: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -80,14 +80,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const fetchUserData = useCallback(async (userId: string) => {
+  const fetchUserData = useCallback(async (userId: string, retryCount = 0): Promise<boolean> => {
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY = 500;
+
     try {
+      console.log(`[AUTH] fetchUserData attempt ${retryCount + 1} for user ${userId}`);
+      
       // Fetch profile with organization
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id, theme_preference')
         .eq('id', userId)
         .maybeSingle();
+
+      if (profileError) {
+        console.error('[AUTH] Error fetching profile:', profileError);
+        throw profileError;
+      }
 
       if (profile?.theme_preference) {
         setThemePreferenceState(profile.theme_preference as ThemePreference);
@@ -95,11 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Fetch organization with trial info
       if (profile?.organization_id) {
-        const { data: org } = await supabase
+        const { data: org, error: orgError } = await supabase
           .from('organizations')
           .select('id, name, code, trial_start_at, trial_end_at')
           .eq('id', profile.organization_id)
           .maybeSingle();
+
+        if (orgError) {
+          console.error('[AUTH] Error fetching organization:', orgError);
+          throw orgError;
+        }
 
         if (org) {
           const trialStartAt = org.trial_start_at ? new Date(org.trial_start_at) : null;
@@ -148,35 +163,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSubscription(null);
         }
       } else {
-        // User has no organization assigned yet
+        // User has no organization assigned yet - might need retry after registration
+        console.log(`[AUTH] User ${userId} has no organization yet`);
         setOrganization(null);
         setSubscription(null);
       }
 
       // Fetch user role (with organization context)
-      const { data: roleData } = await supabase
+      const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role, organization_id')
         .eq('user_id', userId)
         .maybeSingle();
+
+      if (roleError) {
+        console.error('[AUTH] Error fetching role:', roleError);
+        throw roleError;
+      }
 
       if (roleData) {
         setRole(roleData.role as AppRole);
       } else {
         setRole(null);
       }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-    } finally {
+
       setLoading(false);
+      return true;
+    } catch (error) {
+      console.error('[AUTH] Error fetching user data:', error);
+      
+      // Retry logic for transient errors
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[AUTH] Retrying in ${RETRY_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return fetchUserData(userId, retryCount + 1);
+      }
+      
+      // After all retries failed, still turn off loading
+      setLoading(false);
+      return false;
     }
   }, []);
 
-  const refreshUserData = useCallback(async () => {
+  const refreshUserData = useCallback(async (): Promise<boolean> => {
     if (user) {
       setLoading(true);
-      await fetchUserData(user.id);
+      return await fetchUserData(user.id, 0);
     }
+    return false;
   }, [user, fetchUserData]);
 
   useEffect(() => {
