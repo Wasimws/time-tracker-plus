@@ -259,6 +259,26 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {
+          // CRITICAL VALIDATION: Organization name cannot be empty
+          const trimmedName = (organizationName || '').trim();
+          const trimmedCode = (organizationCode || '').trim();
+          
+          if (!trimmedName) {
+            logStep(`User ${email} tried to create org without name - REJECTED`);
+            return new Response(
+              JSON.stringify({ success: false, error: 'Nazwa firmy jest wymagana i nie może być pusta' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          
+          if (trimmedCode.length < 3) {
+            logStep(`User ${email} tried to create org with invalid code - REJECTED`);
+            return new Response(
+              JSON.stringify({ success: false, error: 'Kod firmy musi mieć co najmniej 3 znaki' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          
           // Create new organization with 3-day trial
           const trialEndAt = new Date();
           trialEndAt.setHours(trialEndAt.getHours() + 72); // 3 days = 72 hours
@@ -266,8 +286,8 @@ serve(async (req) => {
           const { data: newOrg, error: orgError } = await supabase
             .from('organizations')
             .insert({
-              name: organizationName || organizationCode,
-              code: organizationCode.toLowerCase(),
+              name: trimmedName,
+              code: trimmedCode.toLowerCase(),
               trial_start_at: new Date().toISOString(),
               trial_end_at: trialEndAt.toISOString(),
             })
